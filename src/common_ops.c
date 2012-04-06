@@ -206,6 +206,9 @@ struct rq_heap_node *rq_take (struct rq *rq)
 		rq->overloaded = 0;
 
 	ns_taken = rq_heap_take(task_compare, &rq->heap);
+#ifdef MEASURE_DEQUEUE_NUMBER
+		MEASURE_ACCOUNT_EVENT(dequeue_number, rq->cpu)
+#endif
 
 	/* earliest cache update */
 	rq->earliest = rq->next;
@@ -262,6 +265,9 @@ struct rq_heap_node *rq_take_next (struct rq *rq)
 		rq->overloaded = 0;
 
 	ns_next = rq_heap_take_next(task_compare, &rq->heap);
+#ifdef MEASURE_DEQUEUE_NUMBER
+		MEASURE_ACCOUNT_EVENT(dequeue_number, rq->cpu)
+#endif
 
 	/* next cache update */
 	if (ns_next != NULL && (new_ns_next = rq_heap_peek_next(task_compare, &rq->heap))) {
@@ -304,6 +310,9 @@ void add_task_rq(struct rq* rq, struct task_struct* task)
 
 	rq_heap_node_init(hn, task);
 	rq_heap_insert(task_compare, &rq->heap, hn);
+#ifdef MEASURE_ENQUEUE_NUMBER
+		MEASURE_ACCOUNT_EVENT(enqueue_number, rq->cpu)
+#endif
 
 	/* min and next cache update */
 	if (rq->nrunning == 0 || __dl_time_before(task_dl, old_earliest)) {

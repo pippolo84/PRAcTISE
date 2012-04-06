@@ -32,6 +32,18 @@
 //#define MEASURE_CYCLE
 
 /*
+ * measure number of occurences
+ * of enqueues on a certain runqueue
+ */
+#define MEASURE_ENQUEUE_NUMBER
+
+/*
+ * measure number of occurences
+ * of enqueues on a certain runqueue
+ */
+#define MEASURE_DEQUEUE_NUMBER
+
+/*
  * measure how much time
  * a find operation takes
  * on the push structure
@@ -59,11 +71,15 @@
  */
 #define MEASURE_PULL_PREEMPT
 
+/* CPUs number */
 #define NPROCESSORS    48
-#define NCYCLES        10 /* 1 cycle = 10ms simulated time */
+/* simulation cycles number */
+#define NCYCLES        1000
+/* simulation cycle period [us] */
+#define CYCLE_LEN			 10000	/* 1 cycle = 10ms simulated time */
 #define DMIN           10
 #define DMAX           100
-#define WAITCYCLE      10000
+//#define WAITCYCLE      10000
 
 #define LOGNAME_LEN		16
 

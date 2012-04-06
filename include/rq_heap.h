@@ -370,9 +370,6 @@ static inline struct rq_heap_node* rq_heap_take_next(rq_heap_prio_t higher_prio,
 	return node;
 }
 
-/*
- * this function use ref field of node!!!
- */
 static inline void rq_heap_decrease(rq_heap_prio_t higher_prio, struct rq_heap* heap,
 				 struct rq_heap_node* node)
 {
@@ -424,9 +421,6 @@ static inline void rq_heap_decrease(rq_heap_prio_t higher_prio, struct rq_heap* 
 	}
 }
 
-/*
- * this function use ref field of node!!!
- */
 static inline void rq_heap_delete(rq_heap_prio_t higher_prio, struct rq_heap* heap,
 			       struct rq_heap_node* node)
 {

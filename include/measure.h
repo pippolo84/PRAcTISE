@@ -16,7 +16,7 @@
  * enabled (it only affects the benchmark
  * result, not the time measurement)
  */
-#define CPU_FREQ							2400000000ULL
+#define CPU_FREQ							1900000000ULL
 
 /*
  * As recommended by Intel we have to
@@ -51,6 +51,8 @@
 #ifdef MEASURE_ALL
 	#define MEASURE_SLEEP
 	#define MEASURE_CYCLE
+	#define MEASURE_ENQUEUE_NUMBER
+	#define MEASURE_DEQUEUE_NUMBER
 	#define MEASURE_PUSH_FIND
 	#define MEASURE_PULL_FIND
 	#define MEASURE_PUSH_PREEMPT
@@ -59,13 +61,15 @@
 
 #if defined(MEASURE_SLEEP) || defined(MEASURE_CYCLE) || \
 	defined(MEASURE_PUSH_FIND) || defined(MEASURE_PULL_FIND) || \
-	defined(MEASURE_PUSH_PREEMPT) || defined(MEASURE_PULL_PREEMPT)
+	defined(MEASURE_PUSH_PREEMPT) || defined(MEASURE_PULL_PREEMPT) || \
+	defined(MEASURE_ENQUEUE_NUMBER) || defined(MEASURE_DEQUEUE_NUMBER)
 
 	#define MEASURE
 #endif
 
 #define IDENTIFIER(prefix, name) prefix##name
 #define TYPE_DECL(type, name) type name
+#define TYPE_POINTER_DECL(type, name) type *name
 #define ARRAY_DECL(name, number) name[number]
 #define EXTERN_DECL(decl) extern decl
 
@@ -73,7 +77,7 @@
 #define _END_TICKS(prefix)					TYPE_DECL(TICKS_TYPE, IDENTIFIER(prefix, _end_ticks))
 #define _CURRENT_ELAPSED(prefix)		TYPE_DECL(TICKS_TYPE, IDENTIFIER(prefix, _current_elapsed))
 
-#define _ELAPSED(prefix)						ARRAY_DECL(ARRAY_DECL(TYPE_DECL(SAMPLES_TYPE, IDENTIFIER(prefix, _elapsed)), SAMPLES_MAX), NPROCESSORS)
+#define _ELAPSED(prefix)						ARRAY_DECL(TYPE_POINTER_DECL(SAMPLES_TYPE, IDENTIFIER(prefix, _elapsed)), NPROCESSORS)
 
 #define _N_ALL(prefix)							ARRAY_DECL(TYPE_DECL(SAMPLES_TYPE, IDENTIFIER(prefix, _n_all)), NPROCESSORS)
 #define _N_SUCCESS(prefix)					ARRAY_DECL(TYPE_DECL(SAMPLES_TYPE, IDENTIFIER(prefix, _n_success)), NPROCESSORS)
@@ -81,6 +85,12 @@
 
 #define MEASURE_VARIABLE(prefix) \
 	_ELAPSED(prefix);
+
+#define MEASURE_ALLOC_VARIABLE(prefix) \
+	alloc_samples_array(IDENTIFIER(prefix, _elapsed))
+
+#define MEASURE_FREE_VARIABLE(prefix) \
+	free_samples_array(IDENTIFIER(prefix, _elapsed))
 
 #define SUCCESS_COUNTER(prefix)		_N_SUCCESS(prefix);
 #define FAIL_COUNTER(prefix)			_N_FAIL(prefix);
@@ -105,11 +115,11 @@
 	__sync_synchronize(); \
 	IDENTIFIER(variable, _end_ticks) = get_ticks(); \
 	__sync_synchronize(); \
-	IDENTIFIER(variable, _current_elapsed) = get_elapsed_ticks(IDENTIFIER(variable, _start_ticks), IDENTIFIER(variable, _end_ticks)); \
+	IDENTIFIER(variable, _current_elapsed) = get_elapsed_ticks(cpu, IDENTIFIER(variable, _start_ticks), IDENTIFIER(variable, _end_ticks)); \
 	if(IDENTIFIER(variable, _current_elapsed) > (TICKS_TYPE)(pow(2, sizeof(SAMPLES_TYPE) * 8) - 1)) \
 		fprintf(stderr, "WARNING: sample value too big to be stored in a SAMPLES_TYPE variable\n"); \
 	SAMPLES_TYPE sample_num_##variable = IDENTIFIER(variable, _n_all[cpu]); \
-	IDENTIFIER(variable, _elapsed[sample_num_##variable][cpu]) = (SAMPLES_TYPE)IDENTIFIER(variable, _current_elapsed); \
+	IDENTIFIER(variable, _elapsed[cpu][sample_num_##variable]) = (SAMPLES_TYPE)IDENTIFIER(variable, _current_elapsed); \
 	IDENTIFIER(variable, _n_all[cpu])++; \
 	if(IDENTIFIER(variable, _n_all[cpu]) > SAMPLES_MAX){ \
 		fprintf(stderr, "WARNING: number of samples recorded exceeded SAMPLES_MAX, starting to overwriting first samples...\n"); \
@@ -122,9 +132,14 @@
 	else \
 		IDENTIFIER(variable, _n_fail[cpu])++;
 
+#define MEASURE_ACCOUNT_EVENT(variable, cpu) \
+	IDENTIFIER(variable, _n_all[cpu])++;
+
 #define MEASURE_PRINT(out, variable, cpu) measure_print(out, #variable, cpu, IDENTIFIER(variable, _elapsed), IDENTIFIER(variable, _n_all))
 
 #define OUTCOME_PRINT(out, variable, cpu) outcome_print(out, #variable, cpu, IDENTIFIER(variable, _n_success), IDENTIFIER(variable, _n_fail))
+
+#define ACCOUNT_PRINT(out, variable, cpu) account_print(out, #variable, cpu, IDENTIFIER(variable, _n_all))
 
 #ifdef MEASURE_CYCLE
 	EXTERN_MEASURE_VARIABLE(cycle)
@@ -134,6 +149,14 @@
 #ifdef MEASURE_SLEEP
 	EXTERN_MEASURE_VARIABLE(sleep)
 	EXTERN_DECL(ALL_COUNTER(sleep))
+#endif
+
+#ifdef MEASURE_ENQUEUE_NUMBER
+	EXTERN_DECL(ALL_COUNTER(enqueue_number))
+#endif
+
+#ifdef MEASURE_DEQUEUE_NUMBER
+	EXTERN_DECL(ALL_COUNTER(dequeue_number))
 #endif
 
 #ifdef MEASURE_PUSH_FIND
@@ -162,10 +185,12 @@
 
 /* TSC measurement interface */
 
-void set_tsc_cost();
-TICKS_TYPE get_tsc_cost();
+void set_tsc_cost(const int cpu);
+void alloc_samples_array(SAMPLES_TYPE *samples_array[NPROCESSORS]);
+void free_samples_array(SAMPLES_TYPE *samples_array[NPROCESSORS]);
+TICKS_TYPE get_tsc_cost(const int cpu);
 TICKS_TYPE get_ticks();
-TICKS_TYPE get_elapsed_ticks(const TICKS_TYPE start, const TICKS_TYPE end);
+TICKS_TYPE get_elapsed_ticks(const int cpu, const TICKS_TYPE start, const TICKS_TYPE end);
 TICKS_TYPE ticks_to_seconds(const TICKS_TYPE ticks);
 TICKS_TYPE ticks_to_milliseconds(const TICKS_TYPE ticks);
 TICKS_TYPE ticks_to_microseconds(const TICKS_TYPE ticks);
@@ -178,7 +203,8 @@ struct timespec get_elapsed_time(const struct timespec start, const struct times
 
 /* measurement print interface */
 
-void measure_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE elapsed[][NPROCESSORS], SAMPLES_TYPE *n_all);
+void measure_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE *elapsed[NPROCESSORS], SAMPLES_TYPE *n_all);
 void outcome_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE *n_success, SAMPLES_TYPE *n_fail);
+void account_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE *n_all);
 
 #endif

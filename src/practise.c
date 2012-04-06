@@ -204,6 +204,10 @@ void *processor(void *arg)
 	fprintf(log, "*****SIMULATION START*****\n\n");
 #endif
 
+#ifdef MEASURE
+		set_tsc_cost(index);
+#endif
+
 	/* 
 	 * initialize CPU runqueue and 
 	 * bind the runqueue address to
@@ -219,7 +223,7 @@ void *processor(void *arg)
 
 	__u64 min_dl = 0, new_dl;
 	__u64 curr_clock = 0;
-	t_period = usec_to_timespec(10000);
+	t_period = usec_to_timespec(CYCLE_LEN);
 
 	/* simulation start barrier */
 	__sync_fetch_and_add(&barrier_count, 1);
@@ -557,7 +561,7 @@ data_struct_t parse_user_options(int argc, char **argv)
 			"\t  -h heap\n"
 			"\t  -s skiplist\n"
 			"\t  -f flat_combining_skiplist\n"
-			"\t  -f bitmap_flat_combining_skiplist\n", argv[0]);
+			"\t  -f bitmap_flat_combining_skiplist\n\n", argv[0]);
 		exit(-1);
 	}
 	while ((c = getopt(argc, argv, "hasfb")) != -1)
@@ -622,8 +626,25 @@ int main(int argc, char **argv)
 		 */
 		if(mlockall(MCL_CURRENT | MCL_FUTURE) < 0)
 			fprintf(stderr, "mlockall(): %s\n", strerror(errno));
+#endif
 
-		set_tsc_cost();
+#ifdef MEASURE_CYCLE
+		MEASURE_ALLOC_VARIABLE(cycle);
+#endif
+#ifdef MEASURE_SLEEP
+		MEASURE_ALLOC_VARIABLE(sleep);
+#endif
+#ifdef MEASURE_PUSH_FIND
+		MEASURE_ALLOC_VARIABLE(push_find);
+#endif
+#ifdef MEASURE_PULL_FIND
+		MEASURE_ALLOC_VARIABLE(pull_find);
+#endif
+#ifdef MEASURE_PULL_PREEMPT
+		MEASURE_ALLOC_VARIABLE(pull_preempt);
+#endif
+#ifdef MEASURE_PUSH_PREEMPT
+		MEASURE_ALLOC_VARIABLE(push_preempt);
 #endif
 
     signal(SIGINT, signal_handler);
@@ -685,7 +706,7 @@ int main(int argc, char **argv)
         printf("Num Preemptions [%d]: %d\n", i, num_preemptions[i]);
         printf("Num Finishings [%d]: %d\n", i, num_finish[i]);
         printf("Num Early Finishings [%d]: %d\n", i, num_early_finish[i]);
-        printf("Num queue empty events  [%d]: %d\n", i, num_empty[i]);
+        printf("Num Queue Empty events  [%d]: %d\n", i, num_empty[i]);
 				printf("Num Push from runqueue [%d]: %d\n", i, num_push[i]);
 				printf("Num Pull to runqueue [%d]: %d\n", i, num_pull[i]);
     }
@@ -698,7 +719,27 @@ int main(int argc, char **argv)
 		sem_destroy(&end_barrier_sem);
 
 #ifdef MEASURE
-		printf("TSC read costs %llu cycles\n\n", get_tsc_cost());
+		for(i = 0; i < online_cpus; i++)
+			printf("[%d]:\tTSC read costs %llu cycles\n", i, get_tsc_cost(i));
+		printf("\n");
+#endif
+
+#ifdef MEASURE_ENQUEUE_NUMBER
+	MEASURE_STREAM_OPEN(enqueue_number);
+	for(i = 0; i < online_cpus; i++){
+		ACCOUNT_PRINT(out_enqueue_number, enqueue_number, i);
+		fprintf(out_enqueue_number, "\n");
+	}
+	MEASURE_STREAM_CLOSE(enqueue_number);
+#endif
+
+#ifdef MEASURE_DEQUEUE_NUMBER
+	MEASURE_STREAM_OPEN(dequeue_number);
+	for(i = 0; i < online_cpus; i++){
+		ACCOUNT_PRINT(out_dequeue_number, dequeue_number, i);
+		fprintf(out_dequeue_number, "\n");
+	}
+	MEASURE_STREAM_CLOSE(dequeue_number);
 #endif
 
 #ifdef MEASURE_PUSH_FIND
@@ -761,6 +802,25 @@ int main(int argc, char **argv)
 			fprintf(out_sleep, "\n");
 		}
 		MEASURE_STREAM_CLOSE(sleep);
+#endif
+
+#ifdef MEASURE_CYCLE
+		MEASURE_FREE_VARIABLE(cycle);
+#endif
+#ifdef MEASURE_SLEEP
+		MEASURE_FREE_VARIABLE(sleep);
+#endif
+#ifdef MEASURE_PUSH_FIND
+		MEASURE_FREE_VARIABLE(push_find);
+#endif
+#ifdef MEASURE_PULL_FIND
+		MEASURE_FREE_VARIABLE(pull_find);
+#endif
+#ifdef MEASURE_PULL_PREEMPT
+		MEASURE_FREE_VARIABLE(pull_preempt);
+#endif
+#ifdef MEASURE_PUSH_PREEMPT
+		MEASURE_FREE_VARIABLE(push_preempt);
 #endif
 
     return 0;
