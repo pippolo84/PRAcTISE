@@ -1,11 +1,16 @@
-#ifndef __COMMON_OPS__
-#define __COMMON_OPS__
+#ifndef __COMMON_OPS_H
+#define __COMMON_OPS_H
 
 #include <linux/types.h>
 #include <stdio.h>
 #include <pthread.h>
 
+#include "parameters.h"
 #include "rq_heap.h"
+#include "kernel_data_struct.h"
+
+#include "cpumask.h"
+#include "cpupri.h"
 
 struct data_struct_ops {
 	void (*data_init) (void *s, int nproc, int (*cmp_dl)(__u64 a, __u64 b));
@@ -41,26 +46,23 @@ extern struct data_struct_ops *dso;
 extern void *push_data_struct, *pull_data_struct;
 extern struct rq *cpu_to_rq[];
 
-struct task_struct {
-	int pid;
-	__u64 deadline;
-};
-
-struct rq {
-	int cpu;
-	struct rq_heap heap;
-	pthread_spinlock_t lock;
-	/* cache values */
-	__u64 earliest, next;
-	int nrunning, overloaded;
-	FILE *log;
-};
-
 int __dl_time_before(__u64 a, __u64 b);
 
 int __dl_time_after(__u64 a, __u64 b);
 
-void rq_init (struct rq *rq, int cpu, FILE *f);
+int __prio_higher(int a, int b);
+
+int __prio_lower(int a, int b);
+
+#ifdef SCHED_DEADLINE
+void task_init(struct task_struct *t, __u64 dline, int pid);
+#endif
+
+#ifdef SCHED_RT
+void task_init(struct task_struct *t, int prio, int runtime, int pid);
+#endif
+
+void rq_init (struct rq *rq, int cpu, struct root_domain *rd, FILE *f);
 
 void rq_destroy (struct rq *rq);
 
@@ -84,4 +86,4 @@ int rq_check(struct rq *rq);
 
 void rq_print(struct rq *this_rq, FILE *out);
 
-#endif /*__COMMON_OPS__ */
+#endif /*__COMMON_OPS_H */

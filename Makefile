@@ -14,7 +14,7 @@ DEPDIR		= dep
 CFLAGS		= -O0 -g #-Wall -Wextra
 INC_FLAG	= -I ./$(INCDIR)
 ALL_CFLAGS	= $(INC_FLAG) $(CFLAGS)
-LDFLAGS		= -lm -lrt -pthread
+LDFLAGS		= -lm -lrt -lpthread
 
 SOURCES = $(wildcard ./$(SRCDIR)/*.c)
 OBJS = $(SOURCES:./$(SRCDIR)/%.c=./$(OBJDIR)/%.o)

@@ -19,6 +19,8 @@
 #include "fc_dl_skiplist.h"
 #include "bm_fc_skiplist.h" 
 #include "common_ops.h"
+#include "kernel_data_struct.h"
+#include "cpupri.h"
 #include "rq_heap.h"
 #include "measure.h"
 #include "parameters.h"
@@ -44,7 +46,7 @@ fc_dl_skiplist_t pull_fc_skiplist;
 fc_sl_t push_bm_fc_skiplist;
 fc_sl_t pull_bm_fc_skiplist;
 
-pthread_t threads[NPROCESSORS];
+pthread_t threads[NR_CPUS];
 sem_t start_barrier_sem, end_barrier_sem;
 unsigned int barrier_count;
 int last_pid = 0; /* operations on this MUST be ATOMIC */
@@ -64,7 +66,11 @@ extern struct data_struct_ops dl_skiplist_ops;
 extern struct data_struct_ops fc_dl_skiplist_ops;
 extern struct data_struct_ops bm_fc_skiplist_ops;
 
-struct rq *cpu_to_rq[NPROCESSORS];
+struct rq *cpu_to_rq[NR_CPUS];
+
+#ifdef SCHED_RT
+	struct root_domain rd;
+#endif
 
 typedef enum {HEAP=0, ARRAY_HEAP=1, SKIPLIST=2, FC_SKIPLIST=3, BM_FC_SKIPLIST=4} data_struct_t;
 typedef enum {ARRIVAL=0, FINISH=1, NOTHING=2} operation_t;
@@ -128,6 +134,7 @@ operation_t select_operation()
 	return NOTHING;
 }
 
+#ifdef SCHED_DEADLINE
 /*
  * arrival_process - randomize a deadline value
  * return the selected value
@@ -140,14 +147,39 @@ __u64 arrival_process(__u64 curr_clock)
 
     return tmp;
 }
+#endif /* SCHED_DEADLINE */
 
-int num_arrivals[NPROCESSORS];
-int num_preemptions[NPROCESSORS];
-int num_early_finish[NPROCESSORS];
-int num_finish[NPROCESSORS];
-int num_empty[NPROCESSORS];
-int num_push[NPROCESSORS];
-int num_pull[NPROCESSORS];
+
+#ifdef SCHED_RT
+/**
+ * arrival_process_prio - randomize a priority value
+ * from range [1, MAX_RT_PRIO], remember that 0 is 
+ * equal to CPUPRI_IDLE.
+ * Return the selected value
+ */
+int arrival_process_prio()
+{
+	return (rand() % (MAX_RT_PRIO - 1)) + 1;
+}
+
+/**
+ * arrival_process_runtime - randomize a runtime value
+ * (number of simulation cycles)
+ * return the selected value
+ */
+int arrival_process_runtime()
+{
+	return (rand() % (RUNTIMEMAX - RUNTIMEMIN)) + RUNTIMEMIN;
+}
+#endif /* SCHED_RT */
+
+int num_arrivals[NR_CPUS];
+int num_preemptions[NR_CPUS];
+int num_early_finish[NR_CPUS];
+int num_finish[NR_CPUS];
+int num_empty[NR_CPUS];
+int num_push[NR_CPUS];
+int num_pull[NR_CPUS];
 
 /*
  * signal_handler - a signal handler for SIGINT signal
@@ -205,7 +237,7 @@ void *processor(void *arg)
 #endif
 
 #ifdef MEASURE
-		set_tsc_cost(index);
+	set_tsc_cost(index);
 #endif
 
 	/* 
@@ -213,7 +245,12 @@ void *processor(void *arg)
 	 * bind the runqueue address to
 	 * CPU in cpu_to_rq global array
 	 */
-	rq_init(&rq, index, log);
+#ifdef SCHED_DEADLINE
+	rq_init(&rq, index, NULL, log);
+#endif
+#ifdef SCHED_RT
+	rq_init(&rq, index, &rd, log);
+#endif
 	cpu_to_rq[index] = &rq;
 
 #ifdef DEBUG
@@ -221,7 +258,13 @@ void *processor(void *arg)
 	fprintf(rq.log, "[%d]:\trq initialized on cpu %d\n", index, cpu);
 #endif
 
+#ifdef SCHED_DEADLINE
 	__u64 min_dl = 0, new_dl;
+#endif
+#ifdef SCHED_RT
+	int curr_runtime, new_runtime; 
+	int highest_prio = CPUPRI_INVALID, new_prio;
+#endif
 	__u64 curr_clock = 0;
 	t_period = usec_to_timespec(CYCLE_LEN);
 
@@ -256,15 +299,29 @@ void *processor(void *arg)
 		/* try to pull to simulate pre_schedule() in Linux Scheduler */
 		num_pull[index] += rq_pull_tasks(&rq);
 
-		/* peek for the earliest deadline task */
+		/* 
+		 * peek for the earliest deadline 
+		 * (or highest priority) task 
+		 */
 		min = rq_peek(&rq);
 		if (min != NULL) {
 			min_tsk = rq_heap_node_value(min);
+#ifdef SCHED_DEADLINE
 			min_dl = min_tsk->deadline;
+#endif
+#ifdef SCHED_RT
+			curr_runtime = min_tsk->runtime;
+#endif
 		}
 
+#ifdef SCHED_DEADLINE
 		/* if min_dl is earlier than curr_clock we have a finish */
-		if (__dl_time_before(min_dl, curr_clock) && min != NULL) {
+		if (min != NULL && __dl_time_before(min_dl, curr_clock)) {
+#endif
+#ifdef SCHED_RT
+		/* if runtime is 0 we have a finish */
+		if (min != NULL && !curr_runtime) {
+#endif
 			/*
 			 * remove task from rq
 			 * task finish
@@ -273,12 +330,22 @@ void *processor(void *arg)
 			free((struct task *)rq_heap_node_value(node));
 			free(node);
 
+#ifdef SCHED_DEADLINE
 			min_dl = 0;
+#endif
+#ifdef SCHED_RT
+			highest_prio = CPUPRI_INVALID;
+#endif
 			is_valid = 0;
 			min = rq_peek(&rq);
 			if (min != NULL) {
 				min_tsk = rq_heap_node_value(min);
+#ifdef SCHED_DEADLINE
 				min_dl = min_tsk->deadline;
+#endif
+#ifdef SCHED_RT
+				highest_prio = min_tsk->prio;
+#endif
 				is_valid = 1;
 			}
 
@@ -303,7 +370,13 @@ void *processor(void *arg)
 		/* arrival of a new task */
 		if (op == ARRIVAL) {
 			num_arrivals[index]++;
+#ifdef SCHED_DEADLINE
 			new_dl = arrival_process(curr_clock);
+#endif
+#ifdef SCHED_RT
+			new_prio = arrival_process_prio();
+			new_runtime = arrival_process_runtime();
+#endif
 			PRINT_OP(index, "arrival", new_dl);
 			new_tsk = (struct task_struct *)malloc(sizeof(*new_tsk));
 			if(!new_tsk){
@@ -311,9 +384,13 @@ void *processor(void *arg)
 				fflush(stderr);
 				exit(1);
 			}
-			new_tsk->deadline = new_dl;
-			new_tsk->pid = __sync_fetch_and_add( &last_pid, 1 );
-#ifdef DEBUG
+#ifdef SCHED_DEADLINE
+			task_init(new_tsk, new_dl, __sync_fetch_and_add( &last_pid, 1 ));
+#endif
+#ifdef SCHED_RT
+			task_init(new_tsk, new_prio, new_runtime, __sync_fetch_and_add( &last_pid, 1 ));
+#endif
+#if defined(DEBUG) && defined(SCHED_DEADLINE)
 			printf("[%d]: task arrival (%d, %llu)\n", index,
 					new_tsk->pid, new_tsk->deadline);
 #endif
@@ -322,18 +399,32 @@ void *processor(void *arg)
 			add_task_rq(&rq, new_tsk);
 
 			/* 
-			 * if new_dl is earlier than min_dl 
-			 * or min_dl = 0 (that is, the runqueue is empty)
+			 * if new_dl is earlier than min_dl,
+			 * new_prio is higher than highest_prio,
+			 * min_dl = 0 or highest_prio = CPUPRI_INVALID
+			 * (that is, the runqueue is empty),
 			 * we have a preempt 
 			 */
+#ifdef SCHED_DEADLINE
 			if (__dl_time_before(new_dl, min_dl)) {
+#endif
+#ifdef SCHED_RT
+			if(__prio_higher(new_prio, highest_prio)) {
+#endif
 #ifdef DEBUG
 				printf("[%d]: preemption!\n", index);
 #endif
 				num_preemptions[index]++;
+#ifdef SCHED_DEADLINE
 				min_dl = new_dl;
 			} else if (min_dl == 0) {
 				min_dl = new_dl;
+#endif
+#ifdef SCHED_RT
+				highest_prio = new_prio;
+			} else if (highest_prio == CPUPRI_INVALID) {
+				highest_prio = new_prio;
+#endif
 #ifdef DEBUG
 				printf("[%d]: no more empty\n", index);
 #endif
@@ -358,12 +449,22 @@ void *processor(void *arg)
 				 * than see if the next task is to be scheduled
 				 * or else the rq becomes empty
 				 */
+#ifdef SCHED_DEADLINE
 				min_dl = 0;
+#endif
+#ifdef SCHED_RT
+				highest_prio = CPUPRI_INVALID;
+#endif
 				is_valid = 0;
 				min = rq_peek(&rq);
 				if (min != NULL) {					
 					min_tsk = rq_heap_node_value(min);
+#ifdef SCHED_DEADLINE
 					min_dl = min_tsk->deadline;
+#endif
+#ifdef SCHED_RT
+					highest_prio = min_tsk->prio;
+#endif
 					is_valid = 1;
 				}
 
@@ -385,6 +486,18 @@ void *processor(void *arg)
 		fprintf(rq.log, "[%d]:\treleasing lock on runqueue #%d\n", index, index);
 #endif
 
+#ifdef SCHED_RT
+		/* 
+		 * we have to decrement task runtime 
+		 * before releasing the lock 
+		 */
+		min = rq_peek(&rq);
+		if (min != NULL) {					
+			min_tsk = rq_heap_node_value(min);
+			min_tsk->runtime = min_tsk->runtime > 0 ? min_tsk->runtime-- : 0;
+		}
+#endif
+
 		/* runqueue lock release */
 		rq_unlock(&rq);
 
@@ -399,7 +512,7 @@ void *processor(void *arg)
 #endif
 
 #ifdef MEASURE_CYCLE
-	MEASURE_END(cycle, index)
+		MEASURE_END(cycle, index)
 #endif
 	}
 
@@ -456,6 +569,9 @@ void *checker(void *arg)
   while(1) {
 		usleep(50000);
 		fprintf(stderr, "%d) Checker: OK!\r", ++count);
+
+/* FIXME */
+#ifdef SCHED_DEADLINE
 
 		/* acquire locks */
 		if(k == online_cpus)
@@ -535,6 +651,8 @@ void *checker(void *arg)
 		fprintf(error_log, "*****END OUTPUT*****\n\n");
 #endif
 
+#endif /* SCHED_DEADLINE */
+
 		fflush(error_log);
 	}
 
@@ -561,7 +679,7 @@ data_struct_t parse_user_options(int argc, char **argv)
 			"\t  -h heap\n"
 			"\t  -s skiplist\n"
 			"\t  -f flat_combining_skiplist\n"
-			"\t  -f bitmap_flat_combining_skiplist\n\n", argv[0]);
+			"\t  -b bitmap_flat_combining_skiplist\n\n", argv[0]);
 		exit(-1);
 	}
 	while ((c = getopt(argc, argv, "hasfb")) != -1)
@@ -610,7 +728,7 @@ int main(int argc, char **argv)
     pthread_t check;
 #endif
     data_struct_t data_type;
-    int ind[NPROCESSORS];
+    int ind[NR_CPUS];
     int i;
 
     online_cpus = sysconf(_SC_NPROCESSORS_ONLN);
@@ -655,30 +773,38 @@ int main(int argc, char **argv)
     switch (data_type) {
 	    case HEAP:
     		printf("Initializing the heap\n");
-		break;
+				break;
 	    case ARRAY_HEAP:
-		dso->data_init(push_data_struct, online_cpus, __dl_time_before);
-		dso->data_init(pull_data_struct, online_cpus, __dl_time_after);
+				dso->data_init(push_data_struct, online_cpus, __dl_time_before);
+				dso->data_init(pull_data_struct, online_cpus, __dl_time_after);
     		printf("Initializing the array_heap\n");
-		break;
+				break;
 	    case SKIPLIST:
-		dso->data_init(push_data_struct, online_cpus, __dl_time_after);
-		dso->data_init(pull_data_struct, online_cpus, __dl_time_before);
-		printf("Initializing the skiplist\n");
-		break;
+				dso->data_init(push_data_struct, online_cpus, __dl_time_after);
+				dso->data_init(pull_data_struct, online_cpus, __dl_time_before);
+				printf("Initializing the skiplist\n");
+				break;
 	    case FC_SKIPLIST:
-		dso->data_init(push_data_struct, online_cpus, __dl_time_after);
-		dso->data_init(pull_data_struct, online_cpus, __dl_time_before);
-		printf("Initializing the flat_combining_skiplist\n");
-		break;
+				dso->data_init(push_data_struct, online_cpus, __dl_time_after);
+				dso->data_init(pull_data_struct, online_cpus, __dl_time_before);
+				printf("Initializing the flat_combining_skiplist\n");
+				break;
 			case BM_FC_SKIPLIST:
-		dso->data_init(push_data_struct, NPROCESSORS, __dl_time_after);
-		dso->data_init(pull_data_struct, NPROCESSORS, __dl_time_before);
-		printf("Initializing the bitmap_flat_combining_skiplist\n");
-		break;
+				dso->data_init(push_data_struct, NR_CPUS, __dl_time_after);
+				dso->data_init(pull_data_struct, NR_CPUS, __dl_time_before);
+				printf("Initializing the bitmap_flat_combining_skiplist\n");
+				break;
 	    default:
-		exit(-1);
+				exit(-1);
     }
+
+#ifdef SCHED_RT
+		/* initialize cpupri root-domain context */
+		cpupri_init(&rd.cpupri);
+		/* initialize overloaded runqueues cpumask */
+		alloc_cpumask_var(&rd.rto_mask);
+		cpumask_clear(rd.rto_mask);
+#endif
 
 #ifndef MEASURE
     printf("Creating Checker\n");
@@ -717,6 +843,13 @@ int main(int argc, char **argv)
 
 		sem_destroy(&start_barrier_sem);
 		sem_destroy(&end_barrier_sem);
+
+#ifdef SCHED_RT
+		/* destroy cpupri root-domain context */
+		cpupri_cleanup(&rd.cpupri);
+		/* destroy overloaded runqueues cpumask */ 
+		free_cpumask_var(rd.rto_mask);
+#endif
 
 #ifdef MEASURE
 		for(i = 0; i < online_cpus; i++)

@@ -50,7 +50,7 @@
 #endif
 
 /* tsc_cost global variables */
-TICKS_TYPE tsc_cost[NPROCESSORS];
+TICKS_TYPE tsc_cost[NR_CPUS];
 
 /*
  * alloc_samples_array - alloc memory for
@@ -58,11 +58,11 @@ TICKS_TYPE tsc_cost[NPROCESSORS];
  * @samples_array:		pointers to array where
  * we will store the samples
  */
-void alloc_samples_array(SAMPLES_TYPE *samples_array[NPROCESSORS])
+void alloc_samples_array(SAMPLES_TYPE *samples_array[NR_CPUS])
 {
 	int i;
 
-	for(i = 0; i < NPROCESSORS; i++){
+	for(i = 0; i < NR_CPUS; i++){
 		samples_array[i] = (SAMPLES_TYPE *)calloc(SAMPLES_MAX, sizeof(**samples_array));
 		if(!samples_array[i]){
 			fprintf(stderr, "calloc(): %s\n", strerror(errno));
@@ -77,11 +77,11 @@ void alloc_samples_array(SAMPLES_TYPE *samples_array[NPROCESSORS])
  * @samples_array:		pointers to array that
  * we want to free
  */
-void free_samples_array(SAMPLES_TYPE *samples_array[NPROCESSORS])
+void free_samples_array(SAMPLES_TYPE *samples_array[NR_CPUS])
 {
 	int i;
 
-	for(i = 0; i < NPROCESSORS; i++)
+	for(i = 0; i < NR_CPUS; i++)
 		free(samples_array[i]);
 }
 
@@ -224,7 +224,7 @@ struct timespec get_elapsed_time(const struct timespec start, const struct times
  * @elapsed:					array of samples (elapsed measure time)
  * @n_all:						number of samples
  */
-void measure_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE *elapsed[NPROCESSORS], SAMPLES_TYPE *n_all)
+void measure_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE *elapsed[NR_CPUS], SAMPLES_TYPE *n_all)
 {
 	long long unsigned i;
 

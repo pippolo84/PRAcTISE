@@ -7,6 +7,23 @@
 /* debug mode */
 //#define DEBUG
 
+/*
+ * choose from:
+ * a) deadline based scheduling
+ * b) priority based scheduling
+ */
+#define SCHED_DEADLINE
+//#define SCHED_RT
+
+/* default to SCHED_DEADLINE */
+#if !defined(SCHED_DEADLINE) && !defined(SCHED_RT)
+	#define SCHED_DEADLINE
+#endif
+
+#if defined(SCHED_DEADLINE) && defined(SCHED_RT)
+	#error "SCHED_DEADLINE and SCHED_RT macro defined together"
+#endif
+
 /* 
  * Activate all measurements. 
  * Beware that some measurements will 
@@ -35,51 +52,52 @@
  * measure number of occurences
  * of enqueues on a certain runqueue
  */
-#define MEASURE_ENQUEUE_NUMBER
+//#define MEASURE_ENQUEUE_NUMBER
 
 /*
  * measure number of occurences
  * of enqueues on a certain runqueue
  */
-#define MEASURE_DEQUEUE_NUMBER
+//#define MEASURE_DEQUEUE_NUMBER
 
 /*
  * measure how much time
  * a find operation takes
  * on the push structure
  */
-#define MEASURE_PUSH_FIND
+//#define MEASURE_PUSH_FIND
 
 /*
  * measure how much time
  * a find operation takes
  * on the push structure
  */
-#define MEASURE_PULL_FIND
+//#define MEASURE_PULL_FIND
 
 /*
  * measure how much time
  * a preempt operation takes
  * on the push structure
  */
-#define MEASURE_PUSH_PREEMPT
+//#define MEASURE_PUSH_PREEMPT
 
 /*
  * measure how much time
  * a find operation takes
  * on the pull structure
  */
-#define MEASURE_PULL_PREEMPT
+//#define MEASURE_PULL_PREEMPT
 
 /* CPUs number */
-#define NPROCESSORS    48
+#define NR_CPUS					48
 /* simulation cycles number */
-#define NCYCLES        1000
+#define NCYCLES					1000
 /* simulation cycle period [us] */
-#define CYCLE_LEN			 10000	/* 1 cycle = 10ms simulated time */
-#define DMIN           10
-#define DMAX           100
-//#define WAITCYCLE      10000
+#define CYCLE_LEN				10000	/* 1 cycle = 10ms simulated time */
+#define DMIN						10
+#define DMAX						100
+#define RUNTIMEMIN			10
+#define RUNTIMEMAX			100
 
 #define LOGNAME_LEN		16
 

@@ -77,11 +77,11 @@
 #define _END_TICKS(prefix)					TYPE_DECL(TICKS_TYPE, IDENTIFIER(prefix, _end_ticks))
 #define _CURRENT_ELAPSED(prefix)		TYPE_DECL(TICKS_TYPE, IDENTIFIER(prefix, _current_elapsed))
 
-#define _ELAPSED(prefix)						ARRAY_DECL(TYPE_POINTER_DECL(SAMPLES_TYPE, IDENTIFIER(prefix, _elapsed)), NPROCESSORS)
+#define _ELAPSED(prefix)						ARRAY_DECL(TYPE_POINTER_DECL(SAMPLES_TYPE, IDENTIFIER(prefix, _elapsed)), NR_CPUS)
 
-#define _N_ALL(prefix)							ARRAY_DECL(TYPE_DECL(SAMPLES_TYPE, IDENTIFIER(prefix, _n_all)), NPROCESSORS)
-#define _N_SUCCESS(prefix)					ARRAY_DECL(TYPE_DECL(SAMPLES_TYPE, IDENTIFIER(prefix, _n_success)), NPROCESSORS)
-#define _N_FAIL(prefix)							ARRAY_DECL(TYPE_DECL(SAMPLES_TYPE, IDENTIFIER(prefix, _n_fail)), NPROCESSORS)
+#define _N_ALL(prefix)							ARRAY_DECL(TYPE_DECL(SAMPLES_TYPE, IDENTIFIER(prefix, _n_all)), NR_CPUS)
+#define _N_SUCCESS(prefix)					ARRAY_DECL(TYPE_DECL(SAMPLES_TYPE, IDENTIFIER(prefix, _n_success)), NR_CPUS)
+#define _N_FAIL(prefix)							ARRAY_DECL(TYPE_DECL(SAMPLES_TYPE, IDENTIFIER(prefix, _n_fail)), NR_CPUS)
 
 #define MEASURE_VARIABLE(prefix) \
 	_ELAPSED(prefix);
@@ -186,8 +186,8 @@
 /* TSC measurement interface */
 
 void set_tsc_cost(const int cpu);
-void alloc_samples_array(SAMPLES_TYPE *samples_array[NPROCESSORS]);
-void free_samples_array(SAMPLES_TYPE *samples_array[NPROCESSORS]);
+void alloc_samples_array(SAMPLES_TYPE *samples_array[NR_CPUS]);
+void free_samples_array(SAMPLES_TYPE *samples_array[NR_CPUS]);
 TICKS_TYPE get_tsc_cost(const int cpu);
 TICKS_TYPE get_ticks();
 TICKS_TYPE get_elapsed_ticks(const int cpu, const TICKS_TYPE start, const TICKS_TYPE end);
@@ -203,7 +203,7 @@ struct timespec get_elapsed_time(const struct timespec start, const struct times
 
 /* measurement print interface */
 
-void measure_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE *elapsed[NPROCESSORS], SAMPLES_TYPE *n_all);
+void measure_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE *elapsed[NR_CPUS], SAMPLES_TYPE *n_all);
 void outcome_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE *n_success, SAMPLES_TYPE *n_fail);
 void account_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE *n_all);
 

@@ -1,3 +1,6 @@
+#ifndef __CYCLE_H
+#define __CYCLE_H
+
 /*
  * Copyright (c) 2003, 2007-8 Matteo Frigo
  * Copyright (c) 2003, 2007-8 Massachusetts Institute of Technology
@@ -529,4 +532,6 @@ INLINE_ELAPSED(inline)
 #define HAVE_TICK_COUNTER
 #endif
 #endif /* HAVE_MIPS_ZBUS_TIMER */
+
+#endif /* __CYCLE_H */
 

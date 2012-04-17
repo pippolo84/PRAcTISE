@@ -89,11 +89,11 @@ struct pub_list{
 	/* publisher CPUs bitmap*/
 	int64_t cpu_bitmap;
 	/* active publication records bitmap */
-	int32_t rec_bitmap[NPROCESSORS];
+	int32_t rec_bitmap[NR_CPUS];
 	/* publication record array*/
-	struct pub_record rec_array[NPROCESSORS * PUB_RECORD_PER_CPU];
+	struct pub_record rec_array[NR_CPUS * PUB_RECORD_PER_CPU];
 	/* last used per CPU publication record index */
-	int last_used_idx[NPROCESSORS];
+	int last_used_idx[NR_CPUS];
 };
 
 /* flat combining helper structure */
@@ -213,7 +213,7 @@ void fc_print_publication_list(struct flat_combining *fc, FILE *out)
 		return;
 
 	bitmap64_print(&map->cpu_bitmap, out);
-	for(i = 0; i < NPROCESSORS; i++){
+	for(i = 0; i < NR_CPUS; i++){
 		fprintf(out, "[%d] ", i);
 		bitmap32_print(&map->rec_bitmap[i], out);
 	}
