@@ -516,6 +516,7 @@ void *processor(void *arg)
 #endif
 	}
 
+#ifdef SCHED_DEADLINE
 	/* 
 	 * this cpu has finished simulation
 	 * therefore global data structures must
@@ -523,10 +524,12 @@ void *processor(void *arg)
 	 */
 	dso->data_preempt(pull_data_struct, index, 0, 0);
 	dso->data_preempt(push_data_struct, index, 0, 0);
+#endif
 
 	/* simulation end barrier */
 	__sync_fetch_and_sub(&barrier_count, 1);
 
+	__sync_synchronize();
 	if(barrier_count == 0)
 		sem_post(&end_barrier_sem);
 
@@ -555,9 +558,13 @@ void *processor(void *arg)
  */
 void *checker(void *arg)
 {
-	int i, k = 0;
+	int i, j, k;
+	int nlock = 0;
 	int count = 0;
 	__u64 dline;
+	struct cpupri *cpupri;
+	struct cpupri_vec *vec;
+	int prio_count;
 	FILE *error_log;
 
 	error_log = fopen("error_log.txt", "w");
@@ -570,29 +577,26 @@ void *checker(void *arg)
 		usleep(50000);
 		fprintf(stderr, "%d) Checker: OK!\r", ++count);
 
-/* FIXME */
-#ifdef SCHED_DEADLINE
-
 		/* acquire locks */
-		if(k == online_cpus)
-			k = 0;
-		for(; k < online_cpus; k++){
+		if(nlock == online_cpus)
+			nlock = 0;
+		for(; nlock < online_cpus; nlock++){
 			/*
 			 * we have to wait the processor
 			 * for updating cpu_to_rq array
 			 * with the runqueue address
 			 */
-			if(!cpu_to_rq[k])
+			if(!cpu_to_rq[nlock])
 				break;
 
-			rq_lock(cpu_to_rq[k]);
+			rq_lock(cpu_to_rq[nlock]);
 		}
 		/*
 		 * some processor hasn't
 		 * updated cpu_to_rq,
 		 * retry
 		 */
-		if(k < online_cpus)
+		if(nlock < online_cpus)
 			continue;
 
 #ifdef DEBUG
@@ -604,7 +608,13 @@ void *checker(void *arg)
 
 		/* check all runqueues */
 		for(i = 0; i < online_cpus; i++)
-			if(!rq_check(cpu_to_rq[i])){
+			/* 
+			 * remember that checker is not affected by barrier,
+			 * so is possible that it runs while the runqueues
+			 * are already destroyed.
+			 * So we have to check explicitly that cpu_to_rq[i] != NULL
+			 */
+			if(!rq_check(cpu_to_rq[i]) && cpu_to_rq[i]){
 				fprintf(error_log, "\n***** rq_check found errors on runqueue %d *****\n\n", i);
 				rq_print(cpu_to_rq[i], error_log);
 				break;
@@ -619,7 +629,15 @@ void *checker(void *arg)
 		fprintf(error_log, "*****END PULL DATA STRUCTURE****\n\n");
 #endif
 
-		/* check all global data structures */
+/* check all global data structures */
+#ifdef SCHED_RT
+		/*
+		 * FIXME
+		 * check di tutti i valori in struct root_domain rd
+		 * devono essere coerenti con i valori nelle runqueue
+		 */
+#endif
+#ifdef SCHED_DEADLINE
 		if (!dso->data_check(push_data_struct, online_cpus)){
 			fprintf(error_log, "\n***** data_check found errors on PUSH DATA STRUCTURE *****\n\n");
 			break;
@@ -628,9 +646,52 @@ void *checker(void *arg)
 			fprintf(error_log, "\n***** data_check found errors on PULL DATA STRUCTURE *****\n\n");
 			break;
 		}
+#endif
 
-		/* check runqueues and global data structures consistency */
+/* check runqueues and global data structures consistency */
+#ifdef SCHED_RT
 		for(i = 0; i < online_cpus; i++){
+			/* 
+			 * remember that checker is not affected by barrier,
+			 * so is possible that it runs while the runqueues
+			 * are already destroyed.
+			 * So we have to check explicitly that cpu_to_rq[i] != NULL
+			 */
+			if(!cpu_to_rq[i])
+				break;
+			cpupri = &rd.cpupri;
+			/* check priorities to CPUs mapping */
+			for(j = 0; j < CPUPRI_NR_PRIORITIES; j++){
+				prio_count = 0;
+				vec = &cpupri->pri_to_cpu[j];
+				for_each_cpu(k, vec->mask){
+					if(convert_prio(cpu_to_rq[k]->highest) != j)
+						fprintf(error_log, "\n***** found errors on cpupri->pri_to_cpu[%d] for runqueue #%d *****\n\n", k, k);
+					prio_count++;
+				}
+				/* check vec->count value */
+				if(prio_count != vec->count)
+					fprintf(error_log, "\n***** found errors on cpupri->pri_to_cpu[%d]->count for runqueue #%d *****\n\n", j, j);
+			}
+			/* check CPUs to priorities mapping */
+			for(j = 0; j < online_cpus; j++){
+				if(convert_prio(cpu_to_rq[j]->highest) != cpupri->cpu_to_pri[j]){
+					fprintf(error_log, "\n***** found errors on cpupri->cpu_to_pri[%d] for runqueue #%d *****\n", j, j);
+					fprintf(error_log, "cpu_to_rq[j]->highest: %d cpupri->cpu_to_pri[j]: %d\n\n",cpu_to_rq[j]->highest, cpupri->cpu_to_pri[j]);
+				}
+			}
+		}
+#endif
+#ifdef SCHED_DEADLINE
+		for(i = 0; i < online_cpus; i++){
+			/* 
+			 * remember that checker is not affected by barrier,
+			 * so is possible that it runs while the runqueues
+			 * are already destroyed.
+			 * So we have to check explicitly that cpu_to_rq[i] != NULL
+			 */
+			if(!cpu_to_rq[i])
+				break;
 			dline = cpu_to_rq[i]->earliest;
 			if(!dso->data_check_cpu(push_data_struct, i, dline)){
 				fprintf(error_log, "\n***** data_check_cpu found errors on PUSH DATA STRUCTURE for runqueue #%d *****\n\n", i);
@@ -642,6 +703,7 @@ void *checker(void *arg)
 				break;
 			}
 		}
+#endif
 
 		/* release locks */
 		for(i = 0; i < online_cpus; i++)
@@ -650,8 +712,6 @@ void *checker(void *arg)
 #ifdef DEBUG
 		fprintf(error_log, "*****END OUTPUT*****\n\n");
 #endif
-
-#endif /* SCHED_DEADLINE */
 
 		fflush(error_log);
 	}

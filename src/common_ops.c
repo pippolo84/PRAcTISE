@@ -53,7 +53,7 @@ int __dl_time_after(__u64 a, __u64 b)
  */
 int __prio_higher(int a, int b)
 {
-	return (a - b) > 0;
+	return a > b;
 }
 
 /**
@@ -182,7 +182,7 @@ void rq_destroy (struct rq *rq)
  * @rq:		the runqueue to lock
  */
 void rq_lock (struct rq *rq)
-{
+{	
 	if(pthread_spin_lock(&rq->lock)){
 #ifdef DEBUG
 		fprintf(stderr, "error while acquiring spin lock on runqueue %d\n", rq->cpu);
@@ -229,7 +229,7 @@ static void rq_double_lock(struct rq *rq1, struct rq *rq2){
 	 * rq1 is the lower id CPU runqueue
 	 * than we acquire the lock on rq2
 	 */
-	if(rq1->cpu - rq2->cpu < 0){
+	if(rq1->cpu < rq2->cpu){
 		rq_lock(rq2);
 
 		return;
@@ -291,6 +291,7 @@ struct rq_heap_node *rq_take (struct rq *rq)
 #ifdef SCHED_RT
 	/* highest cache update */
 	rq->highest = rq->next;
+	cpupri_set(&rq->rd->cpupri, rq->cpu, rq->next);
 #endif /* SCHED_RT */
 #ifdef SCHED_DEADLINE
 	/* earliest cache update */
@@ -465,7 +466,7 @@ void add_task_rq(struct rq* rq, struct task_struct* task)
 		rq->next = old_highest;
 		rq->highest = task_prio;
 		cpupri_set(&rq->rd->cpupri, rq->cpu, task_prio);
-	} else if (!rq->overloaded || __prio_higher(task_prio, old_highest))
+	} else if (!rq->overloaded || __prio_higher(task_prio, old_next))
 		rq->next = task_prio;
 #endif /* SCHED_RT */
 
@@ -602,48 +603,42 @@ int rq_pull_tasks(struct rq* this_rq)
 		if(src_rq->nrunning <= 1)
 			goto skip;
 
-		node = rq_take_next(src_rq);
+		node = rq_heap_peek_next(task_compare, &src_rq->heap);
 		task = rq_heap_node_value(node);
 
-#if 0
 		/*
 		 * Do we have an RT task that preempts
 		 * the to-be-scheduled task?
-		 *
-		 * NOTA:
-		 * questo controllo non ha senso nel simulatore,
-		 * perchè i task accodati nelle runqueue non devono
-		 * attendere il successivo scheduling tick per
-		 * essere schedulati.
 		 */
 		if(task && (task->prio < this_rq->highest)) {
-#endif
-
 #if 0		
-		/*
-		 * There's a chance that p is higher in priority
-		 * than what's currently running on its cpu.
-		 * This is just that p is wakeing up and hasn't
-		 * had a chance to schedule. We only pull
-		 * p if it is lower in priority than the
-		 * current task on the run queue
-		 *
-		 * NOTA:
-		 * questo controllo non ha senso nel simulatore,
-		 * perchè i task accodati nelle runqueue non devono
-		 * attendere il successivo scheduling tick per
-		 * essere schedulati.
-		 */
-		if (task->prio < src_rq->curr->prio)
-			goto skip;
+			/*
+			 * There's a chance that p is higher in priority
+			 * than what's currently running on its cpu.
+			 * This is just that p is wakeing up and hasn't
+			 * had a chance to schedule. We only pull
+			 * p if it is lower in priority than the
+			 * current task on the run queue
+			 *
+			 * NOTA:
+			 * questo controllo non ha senso nel simulatore,
+			 * perchè i task accodati nelle runqueue non devono
+			 * attendere il successivo scheduling tick per
+			 * essere schedulati.
+			 */
+			if (task->prio < src_rq->curr->prio)
+				goto skip;
 #endif
 
-		add_task_rq(this_rq, task);
-			
-		ret = 1;
-#if 0
+			ret = 1;
+
+			/*
+			 * migrate task
+			 */
+			node = rq_take_next(src_rq);
+			task = rq_heap_node_value(node);
+			add_task_rq(this_rq, task);
 		}
-#endif
 
 skip:
 		rq_unlock(src_rq);

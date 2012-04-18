@@ -10,7 +10,7 @@
  * priorities mapping from 0/140
  * scale to -1/102
  */
-static int convert_prio(int prio)
+int convert_prio(int prio)
 {
 	int cpupri;
 

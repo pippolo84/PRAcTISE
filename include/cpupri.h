@@ -28,6 +28,8 @@ struct cpupri {
 };
 
 struct task_struct;
+/* we have to export this for checker in practise.c */
+int convert_prio(int prio);
 int cpupri_find(struct cpupri *cp,
 								struct task_struct *p, struct cpumask *lowest_mask);
 void cpupri_set(struct cpupri *cp, int cpu, int pri);
