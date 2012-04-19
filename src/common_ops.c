@@ -275,13 +275,15 @@ struct rq_heap_node *rq_take (struct rq *rq)
 		exit(-1);
 	}
 
-	if (--rq->nrunning < 2){
+	if (--rq->nrunning < 2)
 		rq->overloaded = 0;
+
 #ifdef SCHED_RT
+	if(rq->nrunning == 1){
 		cpumask_clear_cpu(rq->cpu, rq->rd->rto_mask);
 		__sync_fetch_and_sub(&rq->rd->rto_count, 1);
-#endif
 	}
+#endif
 
 	ns_taken = rq_heap_take(task_compare, &rq->heap);
 #ifdef MEASURE_DEQUEUE_NUMBER
@@ -353,13 +355,15 @@ struct rq_heap_node *rq_take_next (struct rq *rq)
 		exit(-1);
 	}
 
-	if (--rq->nrunning < 2){
+	if (--rq->nrunning < 2)
 		rq->overloaded = 0;
+
 #ifdef SCHED_RT
+	if(rq->nrunning == 1){
 		cpumask_clear_cpu(rq->cpu, rq->rd->rto_mask);
 		__sync_fetch_and_sub(&rq->rd->rto_count, 1);
-#endif
 	}
+#endif
 
 	ns_next = rq_heap_take_next(task_compare, &rq->heap);
 #ifdef MEASURE_DEQUEUE_NUMBER
@@ -470,13 +474,15 @@ void add_task_rq(struct rq* rq, struct task_struct* task)
 		rq->next = task_prio;
 #endif /* SCHED_RT */
 
-	if (++rq->nrunning > 1){
+	if (++rq->nrunning > 1)
 		rq->overloaded = 1;
+
 #ifdef SCHED_RT
-		cpumask_set_cpu(rq->cpu, rq->rd->rto_mask);
-		__sync_fetch_and_add(&rq->rd->rto_count, 1);
+		if(rq->nrunning == 2){
+			cpumask_set_cpu(rq->cpu, rq->rd->rto_mask);
+			__sync_fetch_and_add(&rq->rd->rto_count, 1);
+		}
 #endif
-	}
 }
 
 /*

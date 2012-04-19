@@ -49,6 +49,7 @@ fc_sl_t pull_bm_fc_skiplist;
 pthread_t threads[NR_CPUS];
 sem_t start_barrier_sem, end_barrier_sem;
 unsigned int barrier_count;
+int simulation_start, simulation_end;
 int last_pid = 0; /* operations on this MUST be ATOMIC */
 int online_cpus;
 
@@ -276,6 +277,9 @@ void *processor(void *arg)
 
 	sem_wait(&start_barrier_sem);
 	sem_post(&start_barrier_sem);
+
+	/* set simulation_start flag to signal checker */
+	__sync_fetch_and_add(&simulation_start, 1);
 
 	/* get current time */
 	clock_gettime(CLOCK_MONOTONIC, &t_sleep);
@@ -536,6 +540,9 @@ void *processor(void *arg)
 	sem_wait(&end_barrier_sem);
 	sem_post(&end_barrier_sem);
 
+	/* set simulation_end flag to signal checker */
+	__sync_fetch_and_add(&simulation_end, 1);
+
 	/* runqueue destruction */
 	rq_lock(&rq);
 	
@@ -564,8 +571,9 @@ void *checker(void *arg)
 	__u64 dline;
 	struct cpupri *cpupri;
 	struct cpupri_vec *vec;
-	int prio_count;
+	int prio_count, overloaded_count;
 	FILE *error_log;
+	int error = 0;
 
 	error_log = fopen("error_log.txt", "w");
 	if(!error_log){
@@ -574,30 +582,23 @@ void *checker(void *arg)
 	}
 
   while(1) {
+		/* simulation terminated? */
+		if(simulation_end)
+			break;
+
+		/* checker wait interval */
 		usleep(50000);
+
+		/* simulation started? */
+		if(!simulation_start)
+			continue;
+
+		/* printf checking pass number */
 		fprintf(stderr, "%d) Checker: OK!\r", ++count);
 
 		/* acquire locks */
-		if(nlock == online_cpus)
-			nlock = 0;
-		for(; nlock < online_cpus; nlock++){
-			/*
-			 * we have to wait the processor
-			 * for updating cpu_to_rq array
-			 * with the runqueue address
-			 */
-			if(!cpu_to_rq[nlock])
-				break;
-
+		for(nlock = 0; nlock < online_cpus; nlock++)
 			rq_lock(cpu_to_rq[nlock]);
-		}
-		/*
-		 * some processor hasn't
-		 * updated cpu_to_rq,
-		 * retry
-		 */
-		if(nlock < online_cpus)
-			continue;
 
 #ifdef DEBUG
 		fprintf(error_log, "*****CHECKER OUTPUT - COUNT %d*****", count);
@@ -608,16 +609,10 @@ void *checker(void *arg)
 
 		/* check all runqueues */
 		for(i = 0; i < online_cpus; i++)
-			/* 
-			 * remember that checker is not affected by barrier,
-			 * so is possible that it runs while the runqueues
-			 * are already destroyed.
-			 * So we have to check explicitly that cpu_to_rq[i] != NULL
-			 */
-			if(!rq_check(cpu_to_rq[i]) && cpu_to_rq[i]){
+			if(!rq_check(cpu_to_rq[i])){
 				fprintf(error_log, "\n***** rq_check found errors on runqueue %d *****\n\n", i);
 				rq_print(cpu_to_rq[i], error_log);
-				break;
+				error = 1;
 			}
 
 #ifdef DEBUG
@@ -631,76 +626,72 @@ void *checker(void *arg)
 
 /* check all global data structures */
 #ifdef SCHED_RT
-		/*
-		 * FIXME
-		 * check di tutti i valori in struct root_domain rd
-		 * devono essere coerenti con i valori nelle runqueue
-		 */
+		overloaded_count = 0;
+		for(i = 0; i < online_cpus; i++)
+			if(cpu_to_rq[i]->overloaded)
+				overloaded_count++;
+		if(rd.rto_count != overloaded_count){
+			fprintf(error_log, "\n***** rd->rto_count value (%d) doesn't match with overloaded runqueues number (%d)*****\n\n", rd.rto_count, overloaded_count);
+			error = 1;
+		}
+		for_each_cpu(j, rd.rto_mask)
+			if(!cpu_to_rq[j]->overloaded){
+				fprintf(error_log, "\n***** rd->rto_mask value doesn't match with runqueue #%d overloaded value *****\n\n", j);
+				error = 1;
+			}
 #endif
 #ifdef SCHED_DEADLINE
 		if (!dso->data_check(push_data_struct, online_cpus)){
 			fprintf(error_log, "\n***** data_check found errors on PUSH DATA STRUCTURE *****\n\n");
-			break;
+			error = 1;
 		}
 		if (!dso->data_check(pull_data_struct, online_cpus)){
 			fprintf(error_log, "\n***** data_check found errors on PULL DATA STRUCTURE *****\n\n");
-			break;
+			error = 1;
 		}
 #endif
 
 /* check runqueues and global data structures consistency */
 #ifdef SCHED_RT
 		for(i = 0; i < online_cpus; i++){
-			/* 
-			 * remember that checker is not affected by barrier,
-			 * so is possible that it runs while the runqueues
-			 * are already destroyed.
-			 * So we have to check explicitly that cpu_to_rq[i] != NULL
-			 */
-			if(!cpu_to_rq[i])
-				break;
 			cpupri = &rd.cpupri;
 			/* check priorities to CPUs mapping */
 			for(j = 0; j < CPUPRI_NR_PRIORITIES; j++){
 				prio_count = 0;
 				vec = &cpupri->pri_to_cpu[j];
 				for_each_cpu(k, vec->mask){
-					if(convert_prio(cpu_to_rq[k]->highest) != j)
+					if(convert_prio(cpu_to_rq[k]->highest) != j){
 						fprintf(error_log, "\n***** found errors on cpupri->pri_to_cpu[%d] for runqueue #%d *****\n\n", k, k);
+						error = 1;
+					}
 					prio_count++;
 				}
 				/* check vec->count value */
-				if(prio_count != vec->count)
+				if(prio_count != vec->count){
 					fprintf(error_log, "\n***** found errors on cpupri->pri_to_cpu[%d]->count for runqueue #%d *****\n\n", j, j);
+					error = 1;
+				}
 			}
 			/* check CPUs to priorities mapping */
 			for(j = 0; j < online_cpus; j++){
 				if(convert_prio(cpu_to_rq[j]->highest) != cpupri->cpu_to_pri[j]){
 					fprintf(error_log, "\n***** found errors on cpupri->cpu_to_pri[%d] for runqueue #%d *****\n", j, j);
-					fprintf(error_log, "cpu_to_rq[j]->highest: %d cpupri->cpu_to_pri[j]: %d\n\n",cpu_to_rq[j]->highest, cpupri->cpu_to_pri[j]);
+					error = 1;
 				}
 			}
 		}
 #endif
 #ifdef SCHED_DEADLINE
 		for(i = 0; i < online_cpus; i++){
-			/* 
-			 * remember that checker is not affected by barrier,
-			 * so is possible that it runs while the runqueues
-			 * are already destroyed.
-			 * So we have to check explicitly that cpu_to_rq[i] != NULL
-			 */
-			if(!cpu_to_rq[i])
-				break;
 			dline = cpu_to_rq[i]->earliest;
 			if(!dso->data_check_cpu(push_data_struct, i, dline)){
 				fprintf(error_log, "\n***** data_check_cpu found errors on PUSH DATA STRUCTURE for runqueue #%d *****\n\n", i);
-				break;
+				error = 1;
 			}
 			dline = cpu_to_rq[i]->next;
 			if(!dso->data_check_cpu(pull_data_struct, i, dline)){
 				fprintf(error_log, "\n***** data_check_cpu found errors on PULL DATA STRUCTURE for runqueue #%d *****\n\n", i);
-				break;
+				error = 1;
 			}
 		}
 #endif
@@ -713,11 +704,15 @@ void *checker(void *arg)
 		fprintf(error_log, "*****END OUTPUT*****\n\n");
 #endif
 
-		fflush(error_log);
+		if(error)
+			break;
 	}
 
 	fclose(error_log);
-	exit(1);
+	if(error){
+		fprintf(stderr, "\nchecker found errors, see error_log.txt for details...\n");
+		exit(1);
+	}
 
 	return NULL;
 }

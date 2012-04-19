@@ -96,8 +96,8 @@
 #define CYCLE_LEN				10000	/* 1 cycle = 10ms simulated time */
 #define DMIN						10
 #define DMAX						100
-#define RUNTIMEMIN			10
-#define RUNTIMEMAX			100
+#define RUNTIMEMIN			5
+#define RUNTIMEMAX			15
 
 #define LOGNAME_LEN		16
 
