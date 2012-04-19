@@ -314,7 +314,7 @@ void *processor(void *arg)
 			min_dl = min_tsk->deadline;
 #endif
 #ifdef SCHED_RT
-			curr_runtime = min_tsk->runtime;
+			curr_runtime = --min_tsk->runtime;
 #endif
 		}
 
@@ -472,14 +472,12 @@ void *processor(void *arg)
 					is_valid = 1;
 				}
 
-#ifdef DEBUG
-				if (!is_valid)
+				if (!is_valid){
+#ifdef DEBUG				
 					printf("[%d]: rq empty!\n", index);
 #endif
-
-				if (!is_valid)
 					num_empty[index]++;
-				num_finish[index]++;
+				}
 			}
 		}
 

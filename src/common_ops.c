@@ -53,7 +53,7 @@ int __dl_time_after(__u64 a, __u64 b)
  */
 int __prio_higher(int a, int b)
 {
-	return a > b;
+	return convert_prio(a) > convert_prio(b);
 }
 
 /**
@@ -64,7 +64,7 @@ int __prio_higher(int a, int b)
  */
 int __prio_lower(int a, int b)
 {
-	return (a - b) < 0;
+	return convert_prio(a) < convert_prio(b);
 }
 
 /*
@@ -510,15 +510,7 @@ static struct rq *find_lock_earlier_rq(struct rq *this_rq){
 		if((cpu == -1) || (cpu == this_rq->cpu))
 			break;
 
-		/*
-		 * we have to check earlier_rq
-		 * 'cause that processor
-		 * may have terminated the
-		 * simulation and destroyed
-		 * his runqueue
-		 */
-		if(!(earlier_rq = cpu_to_rq[cpu]))
-			break;
+		earlier_rq = cpu_to_rq[cpu];
 
 		/* locks acquire on source and destination runqueues */
 		rq_double_lock(this_rq, earlier_rq);
@@ -686,7 +678,8 @@ static int find_lowest_rq(struct task_struct *task, int this_cpu){
 	 * the task executed on since it is
 	 * most likely cache-hot in that location.
 	 * But here we don't have any information
-	 * in task_struct of which CPU that task executed.
+	 * in task_struct of which CPU that task executed
+	 * on early.
 	 */
 	/*
 	 * in Linux we also prioritize CPUs that are logically
@@ -759,15 +752,7 @@ static struct rq* find_lock_later_rq(struct task_struct *task,
 		if((cpu == -1) || (cpu == this_rq->cpu))
 			break;
 
-		/*
-		 * we have to check later_rq
-		 * 'cause that processor
-		 * may have terminated the
-		 * simulation and destroyed
-		 * his runqueue
-		 */
-		if(!(later_rq = cpu_to_rq[cpu]))
-			break;
+		later_rq = cpu_to_rq[cpu];
 
 		/* 
 		 * we acquire locks on this_rq
@@ -821,19 +806,17 @@ static struct rq* find_lock_lowest_rq(struct task_struct *task,
 
 	for(tries = 0; tries < PUSH_MAX_TRIES; tries++) {
 		cpu = find_lowest_rq(task, this_rq->cpu);
-		
+
+		//DEBUG
+		/*
+		static int push_total = 0;
+		fprintf(stderr, "PUSH total tries: %d\n", push_total++);
+		*/
+
 		if((cpu == -1) || (cpu == this_rq->cpu))
 			break;
 
-		/*
-		 * we have to check lowest_rq
-		 * 'cause that processor
-		 * may have terminated the
-		 * simulation and destroyed
-		 * his runqueue
-		 */
-		if(!(lowest_rq = cpu_to_rq[cpu]))
-			break;
+		lowest_rq = cpu_to_rq[cpu];
 
 		/* 
 		 * we acquire locks on this_rq
@@ -846,20 +829,38 @@ static struct rq* find_lock_lowest_rq(struct task_struct *task,
 		node = rq_heap_peek_next(task_compare, &this_rq->heap);
 		if(rq_heap_node_value(node) != task || 
 			!cpumask_test_cpu(lowest_rq->cpu, tsk_cpus_allowed(task))){	/* something changed */
-			
+
 			rq_unlock(lowest_rq);
 			lowest_rq = NULL;
 			break;
 		}
 		
+		//DEBUG
+		/*
+		fprintf(stderr, "task->prio: %d lowest_rq->highest: %d\n", task->prio, lowest_rq->highest);
+		*/
+
 		/*
 		 * check if lowest_rq actually contains a task
 		 * with a later deadline. This is necessary 'cause
 		 * in some implementations of the global data structure
 		 * we can have a misalignment
 		 */
-		if(__prio_higher(task->prio, lowest_rq->highest))
+		if(__prio_higher(task->prio, lowest_rq->highest)){
+			//DEBUG
+			/*
+			static int my_count = 0;
+			fprintf(stderr, "%d) OK!\n", my_count++);
+			*/
+
 			break;
+		}
+
+		//DEBUG
+		/*
+		static int my_count2 = 0;
+		fprintf(stderr, "%d) NOT OK!\n", my_count2++);
+		*/
 
 		/* retry */
 		rq_unlock(lowest_rq);
