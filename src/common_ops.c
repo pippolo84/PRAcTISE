@@ -45,6 +45,7 @@ int __dl_time_after(__u64 a, __u64 b)
 	return (__s64)(a - b) > 0;
 }
 
+#ifdef SCHED_RT
 /**
  * __prio_higher - compare two rt priorities, return > 0 
  * if the first is higher than the second
@@ -66,6 +67,7 @@ int __prio_lower(int a, int b)
 {
 	return convert_prio(a) < convert_prio(b);
 }
+#endif /* SCHED_RT */
 
 /*
  * task_compare - compare the deadlines of two struct rq_heap_node,
@@ -807,12 +809,6 @@ static struct rq* find_lock_lowest_rq(struct task_struct *task,
 	for(tries = 0; tries < PUSH_MAX_TRIES; tries++) {
 		cpu = find_lowest_rq(task, this_rq->cpu);
 
-		//DEBUG
-		/*
-		static int push_total = 0;
-		fprintf(stderr, "PUSH total tries: %d\n", push_total++);
-		*/
-
 		if((cpu == -1) || (cpu == this_rq->cpu))
 			break;
 
@@ -834,11 +830,6 @@ static struct rq* find_lock_lowest_rq(struct task_struct *task,
 			lowest_rq = NULL;
 			break;
 		}
-		
-		//DEBUG
-		/*
-		fprintf(stderr, "task->prio: %d lowest_rq->highest: %d\n", task->prio, lowest_rq->highest);
-		*/
 
 		/*
 		 * check if lowest_rq actually contains a task
@@ -846,21 +837,8 @@ static struct rq* find_lock_lowest_rq(struct task_struct *task,
 		 * in some implementations of the global data structure
 		 * we can have a misalignment
 		 */
-		if(__prio_higher(task->prio, lowest_rq->highest)){
-			//DEBUG
-			/*
-			static int my_count = 0;
-			fprintf(stderr, "%d) OK!\n", my_count++);
-			*/
-
+		if(__prio_higher(task->prio, lowest_rq->highest))
 			break;
-		}
-
-		//DEBUG
-		/*
-		static int my_count2 = 0;
-		fprintf(stderr, "%d) NOT OK!\n", my_count2++);
-		*/
 
 		/* retry */
 		rq_unlock(lowest_rq);

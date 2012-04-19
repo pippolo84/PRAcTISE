@@ -12,8 +12,8 @@
  * a) deadline based scheduling
  * b) priority based scheduling
  */
-//#define SCHED_DEADLINE
-#define SCHED_RT
+#define SCHED_DEADLINE
+//#define SCHED_RT
 
 /* default to SCHED_DEADLINE */
 #if !defined(SCHED_DEADLINE) && !defined(SCHED_RT)
