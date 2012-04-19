@@ -3,6 +3,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "parameters.h"
 
@@ -23,14 +24,12 @@
 /* from /tools/perf/util/include/linux/bitops.h */
 static inline void set_bit(int nr, unsigned long *addr)
 {
-	addr[nr / BITS_PER_LONG] |= 1UL << (nr % BITS_PER_LONG);
-	__sync_synchronize();
+	__sync_fetch_and_or(&addr[nr / BITS_PER_LONG], 1UL << (nr % BITS_PER_LONG));
 }
 
 static inline void clear_bit(int nr, unsigned long *addr)
 {
-	addr[nr / BITS_PER_LONG] &= ~(1UL << (nr % BITS_PER_LONG));
-	__sync_synchronize();
+	__sync_fetch_and_and(&addr[nr / BITS_PER_LONG], ~(1UL << (nr % BITS_PER_LONG)));
 }
 
 static __always_inline int test_bit(unsigned int nr, const unsigned long *addr)

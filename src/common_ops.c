@@ -81,7 +81,7 @@ static int task_compare(struct rq_heap_node* _a, struct rq_heap_node* _b)
 #ifdef DEBUG	
 		fprintf(stderr, "ERROR: passing NULL pointer to task_compare!\n");
 #endif /* DEBUG */
-		exit(1);
+		exit(-1);
 	}
 
 	a = (struct task_struct*) rq_heap_node_value(_a);
@@ -91,7 +91,7 @@ static int task_compare(struct rq_heap_node* _a, struct rq_heap_node* _b)
 #ifdef DEBUG	
 		fprintf(stderr, "ERROR: passing NULL pointer to __dl_time_before!\n");
 #endif /* DEBUG */
-		exit(1);
+		exit(-1);
 	}
 
 #ifdef SCHED_DEADLINE
@@ -187,7 +187,7 @@ void rq_lock (struct rq *rq)
 #ifdef DEBUG
 		fprintf(stderr, "error while acquiring spin lock on runqueue %d\n", rq->cpu);
 #endif /* DEBUG */
-		exit(1);	
+		exit(-1);	
 	}
 }
 
@@ -201,7 +201,7 @@ void rq_unlock (struct rq *rq)
 #ifdef DEBUG
 		fprintf(stderr, "error while releasing spin lock on runqueue %d\n", rq->cpu);
 #endif /* DEBUG */
-		exit(1);
+		exit(-1);
 	}
 }
 
@@ -275,15 +275,13 @@ struct rq_heap_node *rq_take (struct rq *rq)
 		exit(-1);
 	}
 
-	if (--rq->nrunning < 2)
+	if(--rq->nrunning == 1){
 		rq->overloaded = 0;
-
 #ifdef SCHED_RT
-	if(rq->nrunning == 1){
-		cpumask_clear_cpu(rq->cpu, rq->rd->rto_mask);
-		__sync_fetch_and_sub(&rq->rd->rto_count, 1);
-	}
+			cpumask_clear_cpu(rq->cpu, rq->rd->rto_mask);
+			__sync_fetch_and_sub(&rq->rd->rto_count, 1);
 #endif
+	}
 
 	ns_taken = rq_heap_take(task_compare, &rq->heap);
 #ifdef MEASURE_DEQUEUE_NUMBER
@@ -347,23 +345,13 @@ struct rq_heap_node *rq_take_next (struct rq *rq)
 	struct task_struct* new_ts_next;
 	int is_valid;
 
-	if (rq->nrunning < 2) {
-#ifdef DEBUG
-		fprintf(rq->log, "[%d] ERROR: dequeue next on a not overloaded queue!\n", rq->cpu);
-		rq_print(rq, stderr);
-#endif
-		exit(-1);
-	}
-
-	if (--rq->nrunning < 2)
+	if(--rq->nrunning == 1){
 		rq->overloaded = 0;
-
 #ifdef SCHED_RT
-	if(rq->nrunning == 1){
-		cpumask_clear_cpu(rq->cpu, rq->rd->rto_mask);
-		__sync_fetch_and_sub(&rq->rd->rto_count, 1);
-	}
+			cpumask_clear_cpu(rq->cpu, rq->rd->rto_mask);
+			__sync_fetch_and_sub(&rq->rd->rto_count, 1);
 #endif
+	}
 
 	ns_next = rq_heap_take_next(task_compare, &rq->heap);
 #ifdef MEASURE_DEQUEUE_NUMBER
@@ -474,15 +462,13 @@ void add_task_rq(struct rq* rq, struct task_struct* task)
 		rq->next = task_prio;
 #endif /* SCHED_RT */
 
-	if (++rq->nrunning > 1)
+	if(++rq->nrunning == 2){
 		rq->overloaded = 1;
-
 #ifdef SCHED_RT
-		if(rq->nrunning == 2){
 			cpumask_set_cpu(rq->cpu, rq->rd->rto_mask);
 			__sync_fetch_and_add(&rq->rd->rto_count, 1);
-		}
 #endif
+	}
 }
 
 /*
@@ -915,7 +901,7 @@ static int rq_push_task(struct rq* this_rq, int *push_count)
 #ifdef DEBUG
 		fprintf(this_rq->log, "[%d] ERROR: runqueue is overloaded but rq_heap_peek_next returns NULL\n", this_rq->cpu);
 		rq_print(this_rq, this_rq->log);
-		exit(1);
+		exit(-1);
 #endif
 		return 0;
 	}

@@ -636,7 +636,7 @@ void *checker(void *arg)
 		}
 		for_each_cpu(j, rd.rto_mask)
 			if(!cpu_to_rq[j]->overloaded){
-				fprintf(error_log, "\n***** rd->rto_mask value doesn't match with runqueue #%d overloaded value *****\n\n", j);
+				fprintf(error_log, "\n***** runqueue #%d isn't overloaded but rd->rto_mask corresponding bit is set *****\n\n", j);
 				error = 1;
 			}
 #endif
@@ -656,7 +656,7 @@ void *checker(void *arg)
 		for(i = 0; i < online_cpus; i++){
 			cpupri = &rd.cpupri;
 			/* check priorities to CPUs mapping */
-			for(j = 0; j < CPUPRI_NR_PRIORITIES; j++){
+			for(j = 0; j < MAX_RT_PRIO; j++){
 				prio_count = 0;
 				vec = &cpupri->pri_to_cpu[j];
 				for_each_cpu(k, vec->mask){
@@ -668,7 +668,7 @@ void *checker(void *arg)
 				}
 				/* check vec->count value */
 				if(prio_count != vec->count){
-					fprintf(error_log, "\n***** found errors on cpupri->pri_to_cpu[%d]->count for runqueue #%d *****\n\n", j, j);
+					fprintf(error_log, "\n***** found errors on cpupri->pri_to_cpu[%d]->count *****\n\n", j, j);
 					error = 1;
 				}
 			}
@@ -704,8 +704,14 @@ void *checker(void *arg)
 		fprintf(error_log, "*****END OUTPUT*****\n\n");
 #endif
 
-		if(error)
+		if(error){
+#ifdef EXIT_ON_ERRORS
 			break;
+#else
+			fprintf(stderr, "\nchecker found errors, see error_log.txt for details...\n");
+			error = 0;
+#endif
+		}
 	}
 
 	fclose(error_log);

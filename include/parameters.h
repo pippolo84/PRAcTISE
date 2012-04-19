@@ -25,6 +25,13 @@
 #endif
 
 /* 
+ * if checker find an error and 
+ * this macro id defined, 
+ * simulation will stop immediately 
+ */
+//#define EXIT_ON_ERRORS
+
+/* 
  * Activate all measurements. 
  * Beware that some measurements will 
  * slow others if they're nested. 
