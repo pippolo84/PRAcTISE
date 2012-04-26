@@ -270,6 +270,10 @@ struct rq_heap_node *rq_take (struct rq *rq)
 	struct task_struct* ts_next;
 	int is_valid;
 
+#ifdef MEASURE_DEQUEUE_CYCLE
+	MEASURE_START(dequeue_cycle, rq->cpu)
+#endif
+
 	if (rq->nrunning < 1) {
 #ifdef DEBUG
 		fprintf(rq->log, "[%d] ERROR: dequeue on an empty queue!\n", rq->cpu);
@@ -293,7 +297,13 @@ struct rq_heap_node *rq_take (struct rq *rq)
 #ifdef SCHED_RT
 	/* highest cache update */
 	rq->highest = rq->next;
+#ifdef MEASURE_CPUPRI_SET
+	MEASURE_START(cpupri_set, rq->cpu)
+#endif
 	cpupri_set(&rq->rd->cpupri, rq->cpu, rq->next);
+#ifdef MEASURE_CPUPRI_SET
+	MEASURE_END(cpupri_set, rq->cpu)
+#endif
 #endif /* SCHED_RT */
 #ifdef SCHED_DEADLINE
 	/* earliest cache update */
@@ -332,6 +342,10 @@ struct rq_heap_node *rq_take (struct rq *rq)
 #endif /* MEASURE_PULL_PREEMPT */
 #endif /* SCHED_DEADLINE */
 
+#ifdef MEASURE_DEQUEUE_CYCLE
+	MEASURE_END(dequeue_cycle, rq->cpu)
+#endif
+
 	return ns_taken;
 }
 
@@ -346,6 +360,10 @@ struct rq_heap_node *rq_take_next (struct rq *rq)
 	struct rq_heap_node *ns_next, *new_ns_next;
 	struct task_struct* new_ts_next;
 	int is_valid;
+
+#ifdef MEASURE_DEQUEUE_CYCLE
+	MEASURE_START(dequeue_cycle, rq->cpu)
+#endif
 
 	if(--rq->nrunning == 1){
 		rq->overloaded = 0;
@@ -383,6 +401,10 @@ struct rq_heap_node *rq_take_next (struct rq *rq)
 #endif /* MEASURE_PULL_PREEMPT */
 #endif /* SCHED_DEADLINE */
 
+#ifdef MEASURE_DEQUEUE_CYCLE
+	MEASURE_END(dequeue_cycle, rq->cpu)
+#endif
+
 	return ns_next;
 }
 
@@ -393,6 +415,10 @@ struct rq_heap_node *rq_take_next (struct rq *rq)
  */
 void add_task_rq(struct rq* rq, struct task_struct* task)
 {
+#ifdef MEASURE_ENQUEUE_CYCLE
+	MEASURE_START(enqueue_cycle, rq->cpu)
+#endif
+
 #ifdef SCHED_DEADLINE
 	__u64 task_dl = task->deadline;
 	__u64 old_earliest = rq->earliest, old_next = rq->next;
@@ -459,7 +485,13 @@ void add_task_rq(struct rq* rq, struct task_struct* task)
 	if(rq->nrunning == 0 || __prio_higher(task_prio, old_highest)) {
 		rq->next = old_highest;
 		rq->highest = task_prio;
-		cpupri_set(&rq->rd->cpupri, rq->cpu, task_prio);
+#ifdef MEASURE_CPUPRI_SET
+	MEASURE_START(cpupri_set, rq->cpu)
+#endif
+	cpupri_set(&rq->rd->cpupri, rq->cpu, task_prio);
+#ifdef MEASURE_CPUPRI_SET
+	MEASURE_END(cpupri_set, rq->cpu)
+#endif
 	} else if (!rq->overloaded || __prio_higher(task_prio, old_next))
 		rq->next = task_prio;
 #endif /* SCHED_RT */
@@ -471,6 +503,10 @@ void add_task_rq(struct rq* rq, struct task_struct* task)
 			__sync_fetch_and_add(&rq->rd->rto_count, 1);
 #endif
 	}
+
+#ifdef MEASURE_ENQUEUE_CYCLE
+	MEASURE_END(enqueue_cycle, rq->cpu)
+#endif
 }
 
 /*
@@ -674,6 +710,7 @@ skip:
 static int find_lowest_rq(struct task_struct *task, int this_cpu){
 	struct cpumask lowest_mask;
 	int cpu;
+	int cpupri_ret;
 
 	/* 
 	 * in Linux we prioritize the last cpu that 
@@ -689,7 +726,16 @@ static int find_lowest_rq(struct task_struct *task, int this_cpu){
 	 * we don't have any information.
 	 */
 
-	if (!cpupri_find(&task->rq->rd->cpupri, task, &lowest_mask))
+#ifdef MEASURE_CPUPRI_FIND
+	MEASURE_START(cpupri_find, this_cpu)
+#endif
+	cpupri_ret = cpupri_find(&task->rq->rd->cpupri, task, &lowest_mask);
+#ifdef MEASURE_CPUPRI_FIND
+	MEASURE_END(cpupri_find, this_cpu)
+	REGISTER_OUTCOME(cpupri_find, this_cpu, cpupri_ret, -1)
+#endif
+
+	if (!cpupri_ret)
 		return -1; /* No targets found */
 
 	cpu = cpumask_any(&lowest_mask);

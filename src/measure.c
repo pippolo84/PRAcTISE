@@ -4,7 +4,6 @@
 #include <errno.h>
 
 #include "measure.h"
-#include "cycle.h"
 #include "parameters.h"
 
 #ifdef MEASURE_CYCLE
@@ -21,8 +20,18 @@
 	ALL_COUNTER(enqueue_number)
 #endif
 
+#ifdef MEASURE_ENQUEUE_CYCLE
+	MEASURE_VARIABLE(enqueue_cycle)
+	ALL_COUNTER(enqueue_cycle)
+#endif
+
 #ifdef MEASURE_DEQUEUE_NUMBER
 	ALL_COUNTER(dequeue_number)
+#endif
+
+#ifdef MEASURE_DEQUEUE_CYCLE
+	MEASURE_VARIABLE(dequeue_cycle)
+	ALL_COUNTER(dequeue_cycle)
 #endif
 
 #ifdef MEASURE_PUSH_FIND
@@ -47,6 +56,18 @@
 #ifdef MEASURE_PULL_PREEMPT
 	MEASURE_VARIABLE(pull_preempt)
 	ALL_COUNTER(pull_preempt)
+#endif
+
+#ifdef MEASURE_CPUPRI_FIND
+	MEASURE_VARIABLE(cpupri_find)
+	FAIL_COUNTER(cpupri_find)
+	SUCCESS_COUNTER(cpupri_find)
+	ALL_COUNTER(cpupri_find)
+#endif
+
+#ifdef MEASURE_CPUPRI_SET
+	MEASURE_VARIABLE(cpupri_set)
+	ALL_COUNTER(cpupri_set)
 #endif
 
 /* tsc_cost global variables */
@@ -93,19 +114,20 @@ void free_samples_array(SAMPLES_TYPE *samples_array[NR_CPUS])
  */
 void set_tsc_cost(const int cpu)
 {
-	ticks t1, t2;
+	uint64_t tsc_cost_start_ticks_high, tsc_cost_start_ticks_low;
+	uint64_t tsc_cost_end_ticks_high, tsc_cost_end_ticks_low;
+	TICKS_TYPE tsc_cost_start_ticks, tsc_cost_end_ticks;
 	TICKS_TYPE elapsed, min_tsc_cost;
 	int i;
 
-	min_tsc_cost = ~0ULL;
+	min_tsc_cost = ~((TICKS_TYPE)0);
 	for(i = 0; i < CALIBRATION_CYCLES; i++){
-		t1 = get_ticks();
-		t2 = get_ticks();
-		elapsed = t2 - t1;
+		GET_START_TICKS(tsc_cost)
+		GET_END_TICKS(tsc_cost)
+		elapsed = tsc_cost_end_ticks - tsc_cost_start_ticks;
 		if(elapsed < min_tsc_cost)
 			min_tsc_cost = elapsed;
 	}
-
 	tsc_cost[cpu] = min_tsc_cost;
 }
 
@@ -138,13 +160,6 @@ TICKS_TYPE ticks_to_milliseconds(const TICKS_TYPE ticks)
 TICKS_TYPE ticks_to_microseconds(const TICKS_TYPE ticks)
 {
 	return ticks / (CPU_FREQ / 1000000ULL);
-}
-
-/*
- * get_ticks - get the value of TSC
- */
-TICKS_TYPE get_ticks(){
-	return (TICKS_TYPE)getticks();
 }
 
 /*
@@ -261,5 +276,5 @@ void account_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE *n_all)
 	double cycle_period_secs = (double)CYCLE_LEN / 1000000;
 
 	fprintf(out, "[%d]: %s occurences: %lu\n", cpu, variable_name, n_all[cpu]);
-	fprintf(out, "[%d]: %s rate: %.0lf Hz\n", cpu, variable_name, n_all[cpu] / (NCYCLES * cycle_period_secs));
+	fprintf(out, "[%d]: %s rate: %.0lf event/s\n", cpu, variable_name, n_all[cpu] / (NCYCLES * cycle_period_secs));
 }

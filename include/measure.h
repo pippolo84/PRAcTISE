@@ -3,9 +3,9 @@
 
 #include <time.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <math.h>
 
-#include "cycle.h"
 #include "parameters.h"
 
 /*
@@ -52,19 +52,32 @@
 	#define MEASURE_SLEEP
 	#define MEASURE_CYCLE
 	#define MEASURE_ENQUEUE_NUMBER
+	#define MEASURE_ENQUEUE_CYCLE
 	#define MEASURE_DEQUEUE_NUMBER
+	#define MEASURE_DEQUEUE_CYCLE
 	#define MEASURE_PUSH_FIND
 	#define MEASURE_PULL_FIND
 	#define MEASURE_PUSH_PREEMPT
 	#define MEASURE_PULL_PREEMPT
+	#define MEASURE_CPUPRI_SET
+	#define MEASURE_CPUPRI_FIND
 #endif
 
 #if defined(MEASURE_SLEEP) || defined(MEASURE_CYCLE) || \
 	defined(MEASURE_PUSH_FIND) || defined(MEASURE_PULL_FIND) || \
 	defined(MEASURE_PUSH_PREEMPT) || defined(MEASURE_PULL_PREEMPT) || \
-	defined(MEASURE_ENQUEUE_NUMBER) || defined(MEASURE_DEQUEUE_NUMBER)
+	defined(MEASURE_ENQUEUE_NUMBER) || defined(MEASURE_DEQUEUE_NUMBER) || \
+	defined(MEASURE_ENQUEUE_CYCLE) || defined(MEASURE_DEQUEUE_CYCLE) || \
+	defined(MEASURE_CPUPRI_SET) || defined(MEASURE_CPUPRI_FIND)
 
 	#define MEASURE
+#endif
+
+/*
+ * check supported platforms
+ */
+#if defined(MEASURE) && !defined(i386) && !defined(__x86_64__)
+	#error "unable to do performance measurements on this platform"
 #endif
 
 #define IDENTIFIER(prefix, name) prefix##name
@@ -73,9 +86,13 @@
 #define ARRAY_DECL(name, number) name[number]
 #define EXTERN_DECL(decl) extern decl
 
-#define _START_TICKS(prefix)				TYPE_DECL(TICKS_TYPE, IDENTIFIER(prefix, _start_ticks))
-#define _END_TICKS(prefix)					TYPE_DECL(TICKS_TYPE, IDENTIFIER(prefix, _end_ticks))
-#define _CURRENT_ELAPSED(prefix)		TYPE_DECL(TICKS_TYPE, IDENTIFIER(prefix, _current_elapsed))
+#define _START_TICKS(prefix)						TYPE_DECL(TICKS_TYPE, IDENTIFIER(prefix, _start_ticks))
+#define _START_TICKS_HIGH(prefix)				TYPE_DECL(uint64_t, IDENTIFIER(prefix, _start_ticks_high))
+#define _START_TICKS_LOW(prefix)				TYPE_DECL(uint64_t, IDENTIFIER(prefix, _start_ticks_low))
+#define _END_TICKS(prefix)							TYPE_DECL(TICKS_TYPE, IDENTIFIER(prefix, _end_ticks)) 
+#define _END_TICKS_HIGH(prefix)					TYPE_DECL(uint64_t, IDENTIFIER(prefix, _end_ticks_high))
+#define _END_TICKS_LOW(prefix)					TYPE_DECL(uint64_t, IDENTIFIER(prefix, _end_ticks_low))
+#define _CURRENT_ELAPSED(prefix)				TYPE_DECL(TICKS_TYPE, IDENTIFIER(prefix, _current_elapsed))
 
 #define _ELAPSED(prefix)						ARRAY_DECL(TYPE_POINTER_DECL(SAMPLES_TYPE, IDENTIFIER(prefix, _elapsed)), NR_CPUS)
 
@@ -103,19 +120,63 @@
 
 #define MEASURE_STREAM_CLOSE(prefix)	fclose(out_##prefix)
 
-#define MEASURE_START(variable, cpu) \
-	_START_TICKS(variable); \
-	_END_TICKS(variable); \
-	_CURRENT_ELAPSED(variable); \
-	__sync_synchronize(); \
-	IDENTIFIER(variable, _start_ticks) = get_ticks(); \
-	__sync_synchronize();
+#ifdef __i386__
+	#define GET_START_TICKS(variable)	\
+		__asm__ __volatile__(		\
+			"cpuid\n\t"						\
+			"rdtsc\n\t"						\
+			"movl %%edx, %0\n\t"	\
+			"movl %%eax, %1\n\t": "=X"(IDENTIFIER(variable, _start_ticks_high)), "=X"(IDENTIFIER(variable, _start_ticks_low)):: "eax", "%ebx", "%ecx", "%edx"	\
+		);
+#endif /* __i386__ */
 
-#define MEASURE_END(variable, cpu) \
-	__sync_synchronize(); \
-	IDENTIFIER(variable, _end_ticks) = get_ticks(); \
-	__sync_synchronize(); \
-	IDENTIFIER(variable, _current_elapsed) = get_elapsed_ticks(cpu, IDENTIFIER(variable, _start_ticks), IDENTIFIER(variable, _end_ticks)); \
+#ifdef __x86_64__
+	#define GET_START_TICKS(variable) \
+		__asm__ __volatile__(		\
+			"cpuid\n\t"						\
+			"rdtsc\n\t"						\
+			"movq %%rdx, %0\n\t"	\
+			"movq %%rax, %1\n\t": "=X"(IDENTIFIER(variable, _start_ticks_high)), "=X"(IDENTIFIER(variable, _start_ticks_low)):: "%rax", "%rbx", "%rcx", "%rdx"	\
+		);
+#endif /* __x86_64__ */
+
+#ifdef __i386__
+	#define GET_END_TICKS(variable)	\
+		__asm__ __volatile__(		\
+			"rdtsc\n\t"					\
+			"movl %%edx, %0\n\t"	\
+			"movl %%eax, %1\n\t"	\
+			"cpuid\n\t": "=X"(IDENTIFIER(variable, _end_ticks_high)), "=X"(IDENTIFIER(variable, _end_ticks_low)):: "%eax", "%ebx", "%ecx", "%edx"	\
+		);	\
+	IDENTIFIER(variable, _start_ticks) = (IDENTIFIER(variable, _start_ticks_high) << 32) | IDENTIFIER(variable, _start_ticks_low);	\
+	IDENTIFIER(variable, _end_ticks) = (IDENTIFIER(variable, _end_ticks_high) << 32) | IDENTIFIER(variable, _end_ticks_low);
+#endif /* __i386__ */
+
+#ifdef __x86_64__
+	#define GET_END_TICKS(variable) \
+		__asm__ __volatile__(		\
+			"rdtscp\n\t"					\
+			"movq %%rdx, %0\n\t"	\
+			"movq %%rax, %1\n\t"	\
+			"cpuid\n\t": "=X"(IDENTIFIER(variable, _end_ticks_high)), "=X"(IDENTIFIER(variable, _end_ticks_low)):: "%rax", "%rbx", "%rcx", "%rdx"	\
+		);	\
+	IDENTIFIER(variable, _start_ticks) = (IDENTIFIER(variable, _start_ticks_high) << 32) | IDENTIFIER(variable, _start_ticks_low);	\
+	IDENTIFIER(variable, _end_ticks) = (IDENTIFIER(variable, _end_ticks_high) << 32) | IDENTIFIER(variable, _end_ticks_low);
+#endif /* __x86_64__ */
+
+#define MEASURE_START(variable, cpu)	\
+	_START_TICKS(variable);							\
+	_START_TICKS_HIGH(variable);				\
+	_START_TICKS_LOW(variable);					\
+	_END_TICKS(variable);								\
+	_END_TICKS_HIGH(variable);					\
+	_END_TICKS_LOW(variable);						\
+	_CURRENT_ELAPSED(variable);					\
+	GET_START_TICKS(variable)
+
+#define MEASURE_END(variable, cpu)								\
+	GET_END_TICKS(variable)													\
+	IDENTIFIER(variable, _current_elapsed) = get_elapsed_ticks(cpu, IDENTIFIER(variable, _start_ticks), IDENTIFIER(variable, _end_ticks));	\
 	if(IDENTIFIER(variable, _current_elapsed) > (TICKS_TYPE)(pow(2, sizeof(SAMPLES_TYPE) * 8) - 1)) \
 		fprintf(stderr, "WARNING: sample value too big to be stored in a SAMPLES_TYPE variable\n"); \
 	SAMPLES_TYPE sample_num_##variable = IDENTIFIER(variable, _n_all[cpu]); \
@@ -155,8 +216,18 @@
 	EXTERN_DECL(ALL_COUNTER(enqueue_number))
 #endif
 
+#ifdef MEASURE_ENQUEUE_CYCLE
+	EXTERN_MEASURE_VARIABLE(enqueue_cycle)
+	EXTERN_DECL(ALL_COUNTER(enqueue_cycle))
+#endif
+
 #ifdef MEASURE_DEQUEUE_NUMBER
 	EXTERN_DECL(ALL_COUNTER(dequeue_number))
+#endif
+
+#ifdef MEASURE_DEQUEUE_CYCLE
+	EXTERN_MEASURE_VARIABLE(dequeue_cycle)
+	EXTERN_DECL(ALL_COUNTER(dequeue_cycle))
 #endif
 
 #ifdef MEASURE_PUSH_FIND
@@ -183,13 +254,24 @@
 	EXTERN_DECL(ALL_COUNTER(pull_preempt))
 #endif
 
+#ifdef MEASURE_CPUPRI_SET
+	EXTERN_MEASURE_VARIABLE(cpupri_set)
+	EXTERN_DECL(ALL_COUNTER(cpupri_set))
+#endif
+
+#ifdef MEASURE_CPUPRI_FIND
+	EXTERN_MEASURE_VARIABLE(cpupri_find)
+	EXTERN_DECL(FAIL_COUNTER(cpupri_find))
+	EXTERN_DECL(SUCCESS_COUNTER(cpupri_find))
+	EXTERN_DECL(ALL_COUNTER(cpupri_find))
+#endif
+
 /* TSC measurement interface */
 
 void set_tsc_cost(const int cpu);
 void alloc_samples_array(SAMPLES_TYPE *samples_array[NR_CPUS]);
 void free_samples_array(SAMPLES_TYPE *samples_array[NR_CPUS]);
 TICKS_TYPE get_tsc_cost(const int cpu);
-TICKS_TYPE get_ticks();
 TICKS_TYPE get_elapsed_ticks(const int cpu, const TICKS_TYPE start, const TICKS_TYPE end);
 TICKS_TYPE ticks_to_seconds(const TICKS_TYPE ticks);
 TICKS_TYPE ticks_to_milliseconds(const TICKS_TYPE ticks);

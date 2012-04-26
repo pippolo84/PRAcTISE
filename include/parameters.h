@@ -12,8 +12,8 @@
  * a) deadline based scheduling
  * b) priority based scheduling
  */
-#define SCHED_DEADLINE
-//#define SCHED_RT
+//#define SCHED_DEADLINE
+#define SCHED_RT
 
 /* default to SCHED_DEADLINE */
 #if !defined(SCHED_DEADLINE) && !defined(SCHED_RT)
@@ -59,13 +59,25 @@
  * measure number of occurences
  * of enqueues on a certain runqueue
  */
-//#define MEASURE_ENQUEUE_NUMBER
+#define MEASURE_ENQUEUE_NUMBER
+
+/*
+ * measure how much time an
+ * enqueue on a runqueue takes
+ */
+#define MEASURE_ENQUEUE_CYCLE
 
 /*
  * measure number of occurences
  * of enqueues on a certain runqueue
  */
-//#define MEASURE_DEQUEUE_NUMBER
+#define MEASURE_DEQUEUE_NUMBER
+
+/*
+ * measure how much time a
+ * dequeue on a runqueue takes
+ */
+#define MEASURE_DEQUEUE_CYCLE
 
 /*
  * measure how much time
@@ -94,6 +106,20 @@
  * on the pull structure
  */
 //#define MEASURE_PULL_PREEMPT
+
+/*
+ * measure how much time
+ * a cpupri_set operation
+ * takes
+ */
+#define MEASURE_CPUPRI_SET
+
+/*
+ * measure how much time
+ * a cpupri_find operation
+ * takes
+ */
+#define MEASURE_CPUPRI_FIND
 
 /* CPUs number */
 #define NR_CPUS					48

@@ -811,6 +811,12 @@ int main(int argc, char **argv)
 #ifdef MEASURE_SLEEP
 		MEASURE_ALLOC_VARIABLE(sleep);
 #endif
+#ifdef MEASURE_ENQUEUE_CYCLE
+		MEASURE_ALLOC_VARIABLE(enqueue_cycle);
+#endif
+#ifdef MEASURE_DEQUEUE_CYCLE
+		MEASURE_ALLOC_VARIABLE(dequeue_cycle);
+#endif
 #ifdef MEASURE_PUSH_FIND
 		MEASURE_ALLOC_VARIABLE(push_find);
 #endif
@@ -822,6 +828,12 @@ int main(int argc, char **argv)
 #endif
 #ifdef MEASURE_PUSH_PREEMPT
 		MEASURE_ALLOC_VARIABLE(push_preempt);
+#endif
+#ifdef MEASURE_CPUPRI_FIND
+		MEASURE_ALLOC_VARIABLE(cpupri_find);
+#endif
+#ifdef MEASURE_CPUPRI_SET
+		MEASURE_ALLOC_VARIABLE(cpupri_set);
 #endif
 
     signal(SIGINT, signal_handler);
@@ -925,6 +937,16 @@ int main(int argc, char **argv)
 	MEASURE_STREAM_CLOSE(enqueue_number);
 #endif
 
+#ifdef MEASURE_ENQUEUE_CYCLE
+	MEASURE_STREAM_OPEN(enqueue_cycle);
+	fprintf(out_enqueue_cycle, "CPUs number:\t%u\n\n", online_cpus);
+	for(i = 0; i < online_cpus; i++){
+		MEASURE_PRINT(out_enqueue_cycle, enqueue_cycle, i);
+		fprintf(out_enqueue_cycle, "\n");
+	}
+	MEASURE_STREAM_CLOSE(enqueue_cycle);
+#endif
+
 #ifdef MEASURE_DEQUEUE_NUMBER
 	MEASURE_STREAM_OPEN(dequeue_number);
 	for(i = 0; i < online_cpus; i++){
@@ -932,6 +954,15 @@ int main(int argc, char **argv)
 		fprintf(out_dequeue_number, "\n");
 	}
 	MEASURE_STREAM_CLOSE(dequeue_number);
+#endif
+
+#ifdef MEASURE_DEQUEUE_CYCLE
+	MEASURE_STREAM_OPEN(dequeue_cycle);
+	fprintf(out_dequeue_cycle, "CPUs number:\t%u\n\n", online_cpus);
+	for(i = 0; i < online_cpus; i++){
+		MEASURE_PRINT(out_dequeue_cycle, dequeue_cycle, i);
+		fprintf(out_dequeue_cycle, "\n");
+	}
 #endif
 
 #ifdef MEASURE_PUSH_FIND
@@ -996,11 +1027,38 @@ int main(int argc, char **argv)
 		MEASURE_STREAM_CLOSE(sleep);
 #endif
 
+#ifdef MEASURE_CPUPRI_SET
+		MEASURE_STREAM_OPEN(cpupri_set);
+		fprintf(out_cpupri_set, "CPUs number:\t%u\n\n", online_cpus);
+		for(i = 0; i < online_cpus; i++){
+			MEASURE_PRINT(out_cpupri_set, cpupri_set, i);
+			fprintf(out_cpupri_set, "\n");
+		}
+		MEASURE_STREAM_CLOSE(cpupri_set);
+#endif
+
+#ifdef MEASURE_CPUPRI_FIND
+		MEASURE_STREAM_OPEN(cpupri_find);
+		fprintf(out_cpupri_find, "CPUs number:\t%u\n\n", online_cpus);
+		for(i = 0; i < online_cpus; i++){
+			MEASURE_PRINT(out_cpupri_find, cpupri_find, i);
+			OUTCOME_PRINT(out_cpupri_find, cpupri_find, i);
+			fprintf(out_cpupri_find, "\n");
+		}
+		MEASURE_STREAM_CLOSE(cpupri_find);
+#endif
+
 #ifdef MEASURE_CYCLE
 		MEASURE_FREE_VARIABLE(cycle);
 #endif
 #ifdef MEASURE_SLEEP
 		MEASURE_FREE_VARIABLE(sleep);
+#endif
+#ifdef MEASURE_ENQUEUE_CYCLE
+		MEASURE_FREE_VARIABLE(enqueue_cycle);
+#endif
+#ifdef MEASURE_DEQUEUE_CYCLE
+		MEASURE_FREE_VARIABLE(dequeue_cycle);
 #endif
 #ifdef MEASURE_PUSH_FIND
 		MEASURE_FREE_VARIABLE(push_find);
@@ -1013,6 +1071,12 @@ int main(int argc, char **argv)
 #endif
 #ifdef MEASURE_PUSH_PREEMPT
 		MEASURE_FREE_VARIABLE(push_preempt);
+#endif
+#ifdef MEASURE_CPUPRI_FIND
+		MEASURE_FREE_VARIABLE(cpupri_find);
+#endif
+#ifdef MEASURE_CPUPRI_SET
+		MEASURE_FREE_VARIABLE(cpupri_set);
 #endif
 
     return 0;
