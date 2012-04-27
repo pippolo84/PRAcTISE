@@ -70,6 +70,8 @@
 	ALL_COUNTER(cpupri_set)
 #endif
 
+#define FNAME_LEN		100
+
 /* tsc_cost global variables */
 TICKS_TYPE tsc_cost[NR_CPUS];
 
@@ -231,6 +233,23 @@ struct timespec get_elapsed_time(const struct timespec start, const struct times
 	return temp;
 }
 
+/**
+ * measure_stream_open - open a file where samples
+ * will be stored
+ * @name:		file name prefix
+ * @online_cpus:	running cpus number
+ */
+FILE *measure_stream_open(char *name, const int online_cpus)
+{
+	char filename[FNAME_LEN];
+	
+	if(!name)
+		return NULL;
+	
+	sprintf(filename, "out_%s_%d", name, online_cpus);
+	return fopen(filename, "w");
+}
+
 /*
  * measure_print - print measure results helper function
  * @out:							output stream
@@ -243,8 +262,8 @@ void measure_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE *elapse
 {
 	long long unsigned i;
 
-	fprintf(out, "[%d]: %s results\n", cpu, variable_name);
-	fprintf(out, "total number:\t%lu\n", n_all[cpu]);
+	//fprintf(out, "[%d]: %s results\n", cpu, variable_name);
+	//fprintf(out, "total number:\t%lu\n", n_all[cpu]);
 	for(i = 0; i < n_all[cpu] && i < SAMPLES_MAX; i++)
 		fprintf(out, "%7lu\n", elapsed[cpu][i]);
 }

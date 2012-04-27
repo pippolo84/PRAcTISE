@@ -116,7 +116,7 @@
 #define EXTERN_MEASURE_VARIABLE(prefix) \
 	EXTERN_DECL(_ELAPSED(prefix));
 
-#define MEASURE_STREAM_OPEN(prefix) FILE *out_##prefix = fopen(#prefix, "w")
+#define MEASURE_STREAM_OPEN(prefix, cpus) FILE *out_##prefix = measure_stream_open(#prefix, cpus)
 
 #define MEASURE_STREAM_CLOSE(prefix)	fclose(out_##prefix)
 
@@ -143,7 +143,7 @@
 #ifdef __i386__
 	#define GET_END_TICKS(variable)	\
 		__asm__ __volatile__(		\
-			"rdtsc\n\t"					\
+			"rdtscp\n\t"					\
 			"movl %%edx, %0\n\t"	\
 			"movl %%eax, %1\n\t"	\
 			"cpuid\n\t": "=X"(IDENTIFIER(variable, _end_ticks_high)), "=X"(IDENTIFIER(variable, _end_ticks_low)):: "%eax", "%ebx", "%ecx", "%edx"	\
@@ -285,6 +285,7 @@ struct timespec get_elapsed_time(const struct timespec start, const struct times
 
 /* measurement print interface */
 
+FILE *measure_stream_open(char *name, const int online_cpus);
 void measure_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE *elapsed[NR_CPUS], SAMPLES_TYPE *n_all);
 void outcome_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE *n_success, SAMPLES_TYPE *n_fail);
 void account_print(FILE *out, char *variable_name, int cpu, SAMPLES_TYPE *n_all);

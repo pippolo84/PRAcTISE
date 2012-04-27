@@ -12,8 +12,8 @@
  * a) deadline based scheduling
  * b) priority based scheduling
  */
-//#define SCHED_DEADLINE
-#define SCHED_RT
+#define SCHED_DEADLINE
+//#define SCHED_RT
 
 /* default to SCHED_DEADLINE */
 #if !defined(SCHED_DEADLINE) && !defined(SCHED_RT)
@@ -84,42 +84,42 @@
  * a find operation takes
  * on the push structure
  */
-//#define MEASURE_PUSH_FIND
+#define MEASURE_PUSH_FIND
 
 /*
  * measure how much time
  * a find operation takes
  * on the push structure
  */
-//#define MEASURE_PULL_FIND
+#define MEASURE_PULL_FIND
 
 /*
  * measure how much time
  * a preempt operation takes
  * on the push structure
  */
-//#define MEASURE_PUSH_PREEMPT
+#define MEASURE_PUSH_PREEMPT
 
 /*
  * measure how much time
  * a find operation takes
  * on the pull structure
  */
-//#define MEASURE_PULL_PREEMPT
+#define MEASURE_PULL_PREEMPT
 
 /*
  * measure how much time
  * a cpupri_set operation
  * takes
  */
-#define MEASURE_CPUPRI_SET
+//#define MEASURE_CPUPRI_SET
 
 /*
  * measure how much time
  * a cpupri_find operation
  * takes
  */
-#define MEASURE_CPUPRI_FIND
+//#define MEASURE_CPUPRI_FIND
 
 /* CPUs number */
 #define NR_CPUS					48
