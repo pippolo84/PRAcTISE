@@ -1,3 +1,22 @@
+/*
+ * Copyright © 2012  Fabio Falzoi, Juri Lelli, Giuseppe Lipari
+ *
+ * This file is part of PRAcTISE.
+ *
+ * PRAcTISE is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+
+ * PRAcTISE is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with Nome-Programma.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #ifndef __MEASURE_H
 #define __MEASURE_H
 
@@ -61,6 +80,7 @@
 	#define MEASURE_PULL_PREEMPT
 	#define MEASURE_CPUPRI_SET
 	#define MEASURE_CPUPRI_FIND
+	#define MEASURE_PULL_CYCLE
 #endif
 
 #if defined(MEASURE_SLEEP) || defined(MEASURE_CYCLE) || \
@@ -68,7 +88,8 @@
 	defined(MEASURE_PUSH_PREEMPT) || defined(MEASURE_PULL_PREEMPT) || \
 	defined(MEASURE_ENQUEUE_NUMBER) || defined(MEASURE_DEQUEUE_NUMBER) || \
 	defined(MEASURE_ENQUEUE_CYCLE) || defined(MEASURE_DEQUEUE_CYCLE) || \
-	defined(MEASURE_CPUPRI_SET) || defined(MEASURE_CPUPRI_FIND)
+	defined(MEASURE_CPUPRI_SET) || defined(MEASURE_CPUPRI_FIND) || \
+	defined(MEASURE_PULL_CYCLE)
 
 	#define MEASURE
 #endif
@@ -264,6 +285,11 @@
 	EXTERN_DECL(FAIL_COUNTER(cpupri_find))
 	EXTERN_DECL(SUCCESS_COUNTER(cpupri_find))
 	EXTERN_DECL(ALL_COUNTER(cpupri_find))
+#endif
+
+#ifdef MEASURE_PULL_CYCLE
+	EXTERN_MEASURE_VARIABLE(pull_cycle)
+	EXTERN_DECL(ALL_COUNTER(pull_cycle))
 #endif
 
 /* TSC measurement interface */

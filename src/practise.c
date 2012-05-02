@@ -1,3 +1,22 @@
+/*
+ * Copyright © 2012  Fabio Falzoi, Juri Lelli, Giuseppe Lipari
+ *
+ * This file is part of PRAcTISE.
+ *
+ * PRAcTISE is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+
+ * PRAcTISE is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with Nome-Programma.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #define _GNU_SOURCE
 #include <sched.h>
 #include <stdlib.h>
@@ -297,12 +316,6 @@ void *processor(void *arg)
 		/* lock runqueue */
 		rq_lock(&rq);
 
-#ifdef DEBUG	
-		fprintf(rq.log, "[%d]:\ttrying to pull tasks from other runqueues\n", index);
-#endif
-		/* try to pull to simulate pre_schedule() in Linux Scheduler */
-		num_pull[index] += rq_pull_tasks(&rq);
-
 		/* 
 		 * peek for the earliest deadline 
 		 * (or highest priority) task 
@@ -480,6 +493,19 @@ void *processor(void *arg)
 				}
 			}
 		}
+
+#ifdef DEBUG	
+		fprintf(rq.log, "[%d]:\ttrying to pull tasks from other runqueues\n", index);
+#endif
+
+#ifdef MEASURE_PULL_CYCLE
+		MEASURE_START(pull_cycle, index)
+#endif
+		/* try to pull to simulate pre_schedule() in Linux Scheduler */
+		num_pull[index] += rq_pull_tasks(&rq);
+#ifdef MEASURE_PULL_CYCLE
+		MEASURE_END(pull_cycle, index)
+#endif
 
 		/* try to push tasks to simulate post_schedule() in Linux Scheduler */
 		num_push[index] += rq_push_tasks(&rq);
@@ -835,6 +861,9 @@ int main(int argc, char **argv)
 #ifdef MEASURE_CPUPRI_SET
 		MEASURE_ALLOC_VARIABLE(cpupri_set);
 #endif
+#ifdef MEASURE_PULL_CYCLE
+		MEASURE_ALLOC_VARIABLE(pull_cycle);
+#endif
 
     signal(SIGINT, signal_handler);
     srand(time(NULL));
@@ -1049,6 +1078,16 @@ int main(int argc, char **argv)
 		MEASURE_STREAM_CLOSE(cpupri_find);
 #endif
 
+#ifdef MEASURE_PULL_CYCLE
+		MEASURE_STREAM_OPEN(pull_cycle, online_cpus);
+		//fprintf(out_pull_cycle, "CPUs number:\t%u\n\n", online_cpus);
+		for(i = 0; i < online_cpus; i++){
+			MEASURE_PRINT(out_pull_cycle, pull_cycle, i);
+			fprintf(out_pull_cycle, "\n");
+		}
+		MEASURE_STREAM_CLOSE(pull_cycle);
+#endif
+
 #ifdef MEASURE_CYCLE
 		MEASURE_FREE_VARIABLE(cycle);
 #endif
@@ -1078,6 +1117,9 @@ int main(int argc, char **argv)
 #endif
 #ifdef MEASURE_CPUPRI_SET
 		MEASURE_FREE_VARIABLE(cpupri_set);
+#endif
+#ifdef MEASURE_PULL_CYCLE
+		MEASURE_FREE_VARIABLE(pull_cycle);
 #endif
 
     return 0;

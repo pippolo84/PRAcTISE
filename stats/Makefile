@@ -1,13 +1,11 @@
-LDFLAGS=-lm
+CFLAGS= -Wall -Wextra -ansi -O0 -ggdb3
 
-all: stats
+all: extract_event_occurences stats_coloumn
 
-stats: stats.o
-	$(CC) -o $@ $< $(LDFLAGS)
+extract_event_occurences: extract_event_occurences.o
 
-%.o: %.c
-	$(CC) -o $@ -c $<
+stats_coloumn: stats_coloumn.o
 
 .PHONY: clean
-clean: 
-	rm stats *.o
+clean:
+	rm -f extract_event_occurences stats_coloumn *.o
