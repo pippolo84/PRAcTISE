@@ -17,6 +17,13 @@
  * along with Nome-Programma.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/*
+ * This code is adapted for use inside PRAcTISE from the Linux Kernel.
+ * You can find the Linux source code here http://www.kernel.org/
+ *
+ * Linux is a registered trademark of Linus Torvalds
+ */
+
 #include "cpumask.h"
 
 #ifdef SCHED_RT
